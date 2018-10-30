@@ -64,7 +64,7 @@ content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
-                               style_img, content_img,
+                               style_img, content_img, device,
                                content_layers=content_layers_default,
                                style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
@@ -131,12 +131,12 @@ def get_input_optimizer(input_img):
     return optimizer
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, num_steps=300,
-                       style_weight=1000000, content_weight=1):
+                       content_img, style_img, input_img, device, 
+                       num_steps=300, style_weight=1000000, content_weight=1):
     """Run the style transfer."""
     print('Building the style transfer model..')
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
-        normalization_mean, normalization_std, style_img, content_img)
+        normalization_mean, normalization_std, style_img, content_img, device)
     optimizer = get_input_optimizer(input_img)
 
     print('Optimizing..')

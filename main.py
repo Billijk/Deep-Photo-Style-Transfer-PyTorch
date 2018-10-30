@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
+from model import run_style_transfer
 
 import argparse
 
@@ -53,7 +54,7 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img)
+                                content_img, style_img, input_img, device)
 
 
     unloader = transforms.ToPILImage()  # reconvert into PIL image
