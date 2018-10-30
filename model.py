@@ -43,6 +43,7 @@ class StyleLoss(nn.Module):
         self.loss = F.mse_loss(G, self.target)
         return input
 
+
 # create a module to normalize input image so we can easily put it in a
 # nn.Sequential
 class Normalization(nn.Module):
@@ -57,6 +58,13 @@ class Normalization(nn.Module):
     def forward(self, img):
         # normalize img
         return (img - self.mean) / self.std
+
+
+def matting_regularizer(input_laplacian, output_image):
+    # input_laplacian: N x N (N = H x W)
+    # output_image: 1 x 3 x H x W
+    o = output_image.view(3, -1)
+    return torch.trace(o @ input_laplacian @ o.t())
 
 
 # desired depth layers to compute style/content losses :
@@ -131,7 +139,7 @@ def get_input_optimizer(input_img):
     return optimizer
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, device, 
+                       content_img, style_img, input_img, input_laplacian, device, 
                        num_steps=300, style_weight=1000000, content_weight=1):
     """Run the style transfer."""
     print('Building the style transfer model..')
@@ -160,7 +168,7 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             style_score *= style_weight
             content_score *= content_weight
 
-            loss = style_score + content_score
+            loss = style_score + content_score + matting_regularizer(input_laplacian, input_img)
             loss.backward()
 
             run[0] += 1

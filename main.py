@@ -11,6 +11,8 @@ import torchvision.models as models
 from model import run_style_transfer
 
 import argparse
+import subprocess
+from scipy.io import loadmat
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
@@ -43,6 +45,13 @@ if __name__ == "__main__":
     print(style_img.size())
     print(content_img.size())
 
+    # call matlab to compute matting laplacian
+    laplacian_path = args.content + ".mat"
+    subprocess.call(["matlab", "-nosplash", "-nodesktop", "-r", 
+        "\"in_name={};out_name={};gen_laplacian;exit\"".format(args.content, laplacian_path)])
+    matting_laplacian = loadmat(laplacian_path)["CSR"]
+    matting_laplacian = torch.Tensor(matting_laplacian).to(device)
+
     assert style_img.size() == content_img.size(),     "we need to import style and content images of the same size"
 
     input_img = content_img.clone()
@@ -54,7 +63,7 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, device)
+                                content_img, style_img, input_img, matting_laplacian, device)
 
 
     unloader = transforms.ToPILImage()  # reconvert into PIL image
