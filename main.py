@@ -1,32 +1,26 @@
 from __future__ import print_function
-
+import argparse
+import matlab
+from matlab.engine import start_matlab
 from PIL import Image
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
 from model import run_style_transfer
 
-import argparse
-import subprocess
-from scipy.io import loadmat
-
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
+parser.add_argument("--size", type=int, default=512, help="Size for scaling image.")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# desired size of the output image
-imsize = 512 if torch.cuda.is_available() else 128  # use small size if no gpu
-
 loader = transforms.Compose([
-    transforms.Resize((512,650)),  # scale imported image
+    transforms.Resize(args.size),  # scale imported image
     transforms.ToTensor()])  # transform it into a torch tensor
 
 
@@ -42,15 +36,24 @@ if __name__ == "__main__":
     style_img = image_loader(args.style)
     content_img = image_loader(args.content)
 
+    # call matlab to compute matting laplacian
+    print("Calculating laplacian")
+    # TODO: consider disk cache to prevent compute it every time
+    eng = start_matlab()
+    eng.cd("gen_laplacian")
+    laplacian = np.asarray(eng.gen_laplacian("../" + args.content, style_img.size(2), style_img.size(3)))
+    laplacian = torch.Tensor(laplacian)
+    laplacian_ix = laplacian[:, 0].long() - 1
+    laplacian_iy = laplacian[:, 1].long() - 1
+    laplacian_v = laplacian[:, 2]
+    s = style_img.size(2) * style_img.size(3)
+    laplacian_size = torch.Size([s, s])
+    laplacian_mat = torch.sparse_coo_tensor(torch.stack([laplacian_ix, laplacian_iy], dim=0), laplacian_v, size=laplacian_size)
+    laplacian_mat = laplacian_mat.detach().to(device)
+
     print(style_img.size())
     print(content_img.size())
-
-    # call matlab to compute matting laplacian
-    laplacian_path = args.content + ".mat"
-    subprocess.call(["matlab", "-nosplash", "-nodesktop", "-r", 
-        "\"in_name={};out_name={};gen_laplacian;exit\"".format(args.content, laplacian_path)])
-    matting_laplacian = loadmat(laplacian_path)["CSR"]
-    matting_laplacian = torch.Tensor(matting_laplacian).to(device)
+    print(laplacian_mat.size())
 
     assert style_img.size() == content_img.size(),     "we need to import style and content images of the same size"
 
@@ -63,10 +66,14 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, matting_laplacian, device)
+                                content_img, style_img, input_img, laplacian_mat, device)
 
 
     unloader = transforms.ToPILImage()  # reconvert into PIL image
+
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
     def imsave(tensor, path, title=None):
         image = tensor.cpu().clone()  # we clone the tensor to not do changes on it

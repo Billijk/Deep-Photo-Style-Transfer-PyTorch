@@ -59,12 +59,13 @@ class Normalization(nn.Module):
         # normalize img
         return (img - self.mean) / self.std
 
-
+# TODO: Change this to custom function to support backprop
+# https://pytorch.org/docs/stable/notes/extending.html#extending-torch-autograd
 def matting_regularizer(input_laplacian, output_image):
     # input_laplacian: N x N (N = H x W)
     # output_image: 1 x 3 x H x W
     o = output_image.view(3, -1)
-    return torch.trace(o @ input_laplacian @ o.t())
+    return torch.trace(o @ (input_laplacian @ o.t()))
 
 
 # desired depth layers to compute style/content losses :

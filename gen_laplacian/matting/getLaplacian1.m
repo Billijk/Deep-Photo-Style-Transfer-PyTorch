@@ -1,4 +1,4 @@
-function [A,A1]=getLaplacian1(I,consts,epsilon,win_size)
+function A=getLaplacian1(I,consts,epsilon,win_size)
   
   if (~exist('epsilon','var'))
     epsilon=0.0000001;

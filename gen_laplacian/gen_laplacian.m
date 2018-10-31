@@ -1,10 +1,10 @@
+function CSR = gen_laplacian(in_name, h, w)
 addpath matting/
 addpath gaimc/
 
-disp(['Working on image ' in_name]);
-
+%disp(['Working on image ' in_name]);
 input = im2double(imread(in_name));
-input = reshape_img(input, 700);
+input = imresize(input, [h w]);
 %size(input)
 
 %close all
@@ -12,11 +12,10 @@ input = reshape_img(input, 700);
 
 [h w c] = size(input);
 
-disp('Compute Laplacian');
+%disp('Compute Laplacian');
 A = getLaplacian1(input, zeros(h, w), 1e-7, 1);
 
-
-disp('Save to disk');
+%disp('Save to disk');
 n = nnz(A);
 [Ai, Aj, Aval] = find(A);
 CSC = [Ai, Aj, Aval];
@@ -27,4 +26,4 @@ Ai = sort(Ai);
 Aj = ci;
 Aval = ai;
 CSR = [Ai, Aj, Aval];
-save(out_name, 'CSR');
+%save(out_name, 'CSR');
