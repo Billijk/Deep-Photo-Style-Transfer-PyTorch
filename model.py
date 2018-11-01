@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Function
 import torch.optim as optim
 
 import copy
@@ -61,11 +62,22 @@ class Normalization(nn.Module):
 
 # TODO: Change this to custom function to support backprop
 # https://pytorch.org/docs/stable/notes/extending.html#extending-torch-autograd
-def matting_regularizer(input_laplacian, output_image):
-    # input_laplacian: N x N (N = H x W)
-    # output_image: 1 x 3 x H x W
-    o = output_image.view(3, -1)
-    return torch.trace(o @ (input_laplacian @ o.t()))
+class matting_regularizer(Function):
+
+    @staticmethod
+    def forward(ctx, input_laplacian, output_image):
+        # input_laplacian: N x N (N = H x W)
+        # output_image: 1 x 3 x H x W
+        o = output_image.view(3, -1)
+        ctx.save_for_backward(input_laplacian.detach())
+        ctx.save_for_backward(o)
+        return torch.trace(o @ (input_laplacian @ o.t()))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        l, o = ctx.saved_tensors
+        grad_input = grad_output * (o @ l)
+        return grad_input
 
 
 # desired depth layers to compute style/content losses :
@@ -140,13 +152,15 @@ def get_input_optimizer(input_img):
     return optimizer
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, input_laplacian, device, 
+                       content_img, style_img, input_img, input_laplacian, 
+                       wr, device,
                        num_steps=300, style_weight=1000000, content_weight=1):
     """Run the style transfer."""
     print('Building the style transfer model..')
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
         normalization_mean, normalization_std, style_img, content_img, device)
     optimizer = get_input_optimizer(input_img)
+    regularizer = matting_regularizer.apply
 
     print('Optimizing..')
     run = [0]
@@ -169,7 +183,7 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             style_score *= style_weight
             content_score *= content_weight
 
-            loss = style_score + content_score + matting_regularizer(input_laplacian, input_img)
+            loss = style_score + content_score + wr * regularizer(input_laplacian, input_img)
             loss.backward()
 
             run[0] += 1
