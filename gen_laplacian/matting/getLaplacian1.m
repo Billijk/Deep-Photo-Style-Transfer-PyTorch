@@ -19,7 +19,7 @@ function A=getLaplacian1(I,consts,epsilon,win_size)
   img_size=w*h;
   consts=imerode(consts,ones(win_size*2+1));
   
-  indsM=reshape([1:img_size],h,w);
+  indsM=reshape([1:img_size],w,h)';
   tlen=sum(sum(1-consts(win_size+1:end-win_size,win_size+1:end-win_size)))*(neb_size^2);
 
   row_inds=zeros(tlen ,1);

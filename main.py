@@ -6,42 +6,50 @@ from PIL import Image
 import numpy as np
 
 import torch
-import torchvision.transforms as transforms
+import torchvision.transforms.functional as t_func
 import torchvision.models as models
-from model import run_style_transfer
+import torch.optim as optim
+from model import get_style_model_and_losses, matting_regularizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
-parser.add_argument("--size", type=int, default=512, help="Size for scaling image.")
+parser.add_argument("--step", type=int, default=300, help="Number of steps to optimize.")
+parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
 parser.add_argument("--laplacian", type=str, default="", help="Load pre-calculated matting laplacian values."
         "If this is not specified, then a new values will be calculated and saved on disk.")
 parser.add_argument("--wr", type=float, default=1e4, help="Weight for photorealism regularization (default: 10000).")
+parser.add_argument("--ws", type=float, default=1e4, help="Weight for style loss (default: 10000).")
+parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-loader = transforms.Compose([
-    transforms.Resize(args.size),  # scale imported image
-    transforms.ToTensor()])  # transform it into a torch tensor
 
-
-def image_loader(image_name):
+def image_loader(image_name, h, w=None):
     image = Image.open(image_name)
+    if w is not None: size = (h, w)
+    else: size = h
+    image = t_func.resize(image, size)
     # fake batch dimension required to fit network's input dimensions
-    image = loader(image).unsqueeze(0)
+    image = t_func.to_tensor(image).unsqueeze(0)
     return image.to(device, torch.float)
 
 
 if __name__ == "__main__":
 
-    style_img = image_loader(args.style)
-    content_img = image_loader(args.content)
+    style_img = image_loader(args.style, args.size)
+    content_img = image_loader(args.content, style_img.size(2), style_img.size(3))
+    print(style_img.size())
+    print(content_img.size())
 
     if len(args.laplacian) > 0:
         print("Loading laplacian from {}".format(args.laplacian))
-        laplacian_mat = torch.load(args.laplacian).to(device)
+        laplacian_i, laplacian_v = torch.load(args.laplacian)
+        s = style_img.size(2) * style_img.size(3)
+        laplacian_size = torch.Size([s, s])
+        laplacian_mat = torch.sparse_coo_tensor(laplacian_i, laplacian_v, size=laplacian_size).to(device)
     else:
         print("Calculating laplacian")
         # call matlab to compute matting laplacian
@@ -54,16 +62,13 @@ if __name__ == "__main__":
         laplacian_v = laplacian[:, 2]
         s = style_img.size(2) * style_img.size(3)
         laplacian_size = torch.Size([s, s])
-        laplacian_mat = torch.sparse_coo_tensor(torch.stack([laplacian_ix, laplacian_iy], dim=0), laplacian_v, size=laplacian_size)
-        laplacian_mat = laplacian_mat.to(device)
+        laplacian_i = torch.stack([laplacian_ix, laplacian_iy], dim=0)
+        laplacian_mat = torch.sparse_coo_tensor(laplacian_i, laplacian_v, size=laplacian_size).to(device)
 
         save_path = args.content + ".ml_{}.pth".format(s)
-        torch.save(laplacian_mat, save_path)
+        torch.save((laplacian_i, laplacian_v), save_path)
         print("Values for matting laplacian saved at {}. Load this for the next time so you don't have to compute it again.".format(save_path))
 
-    print(style_img.size())
-    print(content_img.size())
-    print(laplacian_mat.size())
 
     assert style_img.size() == content_img.size(),     "we need to import style and content images of the same size"
     assert laplacian_mat.size(0) == style_img.size(2) * style_img.size(3)
@@ -76,23 +81,62 @@ if __name__ == "__main__":
     cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
-    output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, laplacian_mat,
-                                args.wr, device)
+    print('Building the style transfer model..')
+    model, style_losses, content_losses = get_style_model_and_losses(cnn,
+        cnn_normalization_mean, cnn_normalization_std, style_img, content_img, device)
+    optimizer = optim.LBFGS([input_img.requires_grad_()])
+    regularizer = matting_regularizer.apply
 
-
-    unloader = transforms.ToPILImage()  # reconvert into PIL image
-
+    print('Optimizing..')
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-
+    
     def imsave(tensor, path, title=None):
         image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
+        image.data.clamp_(0, 1)
         image = image.squeeze(0)      # remove the fake batch dimension
-        image = unloader(image)
+        image = t_func.to_pil_image(image)
         if title is not None:
             plt.title(title)
         plt.imsave(path, image)
 
-    imsave(output, args.output)
+    run = [0]
+    while run[0] <= args.step:
+
+        def closure():
+
+            optimizer.zero_grad()
+            model(input_img)
+            style_score = 0
+            content_score = 0
+
+            for sl in style_losses:
+                style_score += sl.loss
+            for cl in content_losses:
+                content_score += cl.loss
+
+            style_score *= args.ws
+            content_score *= args.wc
+            regularize_score = args.wr * regularizer(laplacian_mat, input_img)
+
+            loss = style_score + content_score + regularize_score
+            loss.backward()
+
+            run[0] += 1
+            if run[0] % 50 == 0:
+                print("run {}:".format(run))
+                print('Style Loss : {:4f} Content Loss: {:4f} Regularization: {:4f}'.format(
+                    style_score.item(), content_score.item(), regularize_score))
+                print()
+                suffix_pos = args.output.rindex('.')
+                image_save_path = args.output[:suffix_pos] + "_it{}".format(run[0]) + args.output[suffix_pos:]
+                imsave(input_img, image_save_path)
+
+            return loss
+
+        optimizer.step(closure)
+        # correct the values of updated input image
+        input_img.data.clamp_(0, 1)
+
+    print("Finished.")

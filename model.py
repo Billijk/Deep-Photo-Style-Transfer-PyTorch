@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
-import torch.optim as optim
 
 import copy
 
@@ -68,16 +67,24 @@ class matting_regularizer(Function):
     def forward(ctx, input_laplacian, output_image):
         # input_laplacian: N x N (N = H x W)
         # output_image: 1 x 3 x H x W
-        o = output_image.view(3, -1)
-        ctx.save_for_backward(input_laplacian.detach())
-        ctx.save_for_backward(o)
-        return torch.trace(o @ (input_laplacian @ o.t()))
+        ctx.save_for_backward(input_laplacian, output_image)
+        o = output_image.view(1, 3, -1)
+        out = 0
+        for c in range(3):
+            o_c = o[:, c, :]
+            out += o_c @ (input_laplacian @ o_c.t())
+        return out.squeeze()
 
     @staticmethod
     def backward(ctx, grad_output):
-        l, o = ctx.saved_tensors
-        grad_input = grad_output * (o @ l)
-        return grad_input
+        l, output_image = ctx.saved_tensors
+        o = output_image.view(1, 3, -1)
+        grads = []
+        for c in range(3):
+            o_c = o[:, c, :]
+            grads.append((l @ o_c.t()).t())
+        grad_input = 2. * grad_output * torch.cat(grads, dim=0).unsqueeze(0)
+        return None, grad_input.view_as(output_image)
 
 
 # desired depth layers to compute style/content losses :
@@ -145,59 +152,3 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     return model, style_losses, content_losses
 
-
-def get_input_optimizer(input_img):
-    # this line to show that input is a parameter that requires a gradient
-    optimizer = optim.LBFGS([input_img.requires_grad_()])
-    return optimizer
-
-def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, input_laplacian, 
-                       wr, device,
-                       num_steps=300, style_weight=1000000, content_weight=1):
-    """Run the style transfer."""
-    print('Building the style transfer model..')
-    model, style_losses, content_losses = get_style_model_and_losses(cnn,
-        normalization_mean, normalization_std, style_img, content_img, device)
-    optimizer = get_input_optimizer(input_img)
-    regularizer = matting_regularizer.apply
-
-    print('Optimizing..')
-    run = [0]
-    while run[0] <= num_steps:
-
-        def closure():
-            # correct the values of updated input image
-            input_img.data.clamp_(0, 1)
-
-            optimizer.zero_grad()
-            model(input_img)
-            style_score = 0
-            content_score = 0
-
-            for sl in style_losses:
-                style_score += sl.loss
-            for cl in content_losses:
-                content_score += cl.loss
-
-            style_score *= style_weight
-            content_score *= content_weight
-
-            loss = style_score + content_score + wr * regularizer(input_laplacian, input_img)
-            loss.backward()
-
-            run[0] += 1
-            if run[0] % 50 == 0:
-                print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f}'.format(
-                    style_score.item(), content_score.item()))
-                print()
-
-            return style_score + content_score
-
-        optimizer.step(closure)
-
-    # a last correction...
-    input_img.data.clamp_(0, 1)
-
-    return input_img
