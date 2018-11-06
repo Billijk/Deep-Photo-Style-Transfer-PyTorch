@@ -36,13 +36,14 @@ def visualize_result(data, preds, args):
     # prediction
     pred_color = colorEncode(preds, colors)
 
+    '''
     # aggregate images and save
     im_vis = np.concatenate((img, pred_color),
                             axis=1).astype(np.uint8)
-
+    '''
     img_name = info.split('/')[-1]
     cv2.imwrite(os.path.join(args.result,
-                img_name.replace('.jpg', '.png')), im_vis)
+                img_name.replace('.jpg', '.png')), pred_color)
 
 
 def test(segmentation_module, loader, args):
@@ -51,8 +52,12 @@ def test(segmentation_module, loader, args):
     for i, batch_data in enumerate(loader):
         # process data
         batch_data = batch_data[0]
+        '''
         segSize = (batch_data['img_ori'].shape[0],
                    batch_data['img_ori'].shape[1])
+        '''
+        segSize = (468, 700)
+        print('segSize:',segSize)
 
         img_resized_list = batch_data['img_data']
 
@@ -102,11 +107,22 @@ def main(args):
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
 
     # Dataset and Loader
-    list_test = [{'fpath_img': args.test_img}]
-    dataset_val = TestDataset(
-        list_test, args, max_sample=args.num_val)
-    loader_val = torchdata.DataLoader(
-        dataset_val,
+    list_test1 = [{'fpath_img': args.test_img1}]
+    dataset_val1 = TestDataset(
+        list_test1, args, max_sample=args.num_val)
+    loader_val1 = torchdata.DataLoader(
+        dataset_val1,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=user_scattered_collate,
+        num_workers=5,
+        drop_last=True)
+
+    list_test2 = [{'fpath_img': args.test_img2}]
+    dataset_val2 = TestDataset(
+        list_test2, args, max_sample=args.num_val)
+    loader_val2 = torchdata.DataLoader(
+        dataset_val2,
         batch_size=args.batch_size,
         shuffle=False,
         collate_fn=user_scattered_collate,
@@ -116,7 +132,9 @@ def main(args):
     segmentation_module.cuda()
 
     # Main loop
-    test(segmentation_module, loader_val, args)
+    test(segmentation_module, loader_val1, args)
+    test(segmentation_module, loader_val2, args)
+    
 
     print('Inference done!')
 
@@ -167,7 +185,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # Path related arguments
-    parser.add_argument('--test_img', required=True)
+    parser.add_argument('--test_img1', required=True)
+    parser.add_argument('--test_img2', required=True)
     parser.add_argument('--model_path', required=True,
                         help='folder to model path')
     parser.add_argument('--suffix', default='_epoch_20.pth',
