@@ -58,20 +58,23 @@ if __name__ == "__main__":
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
 
-    image = output.cpu().clone()  # we clone the tensor to not do changes on it
-    image = image.squeeze(0)      # remove the fake batch dimension
-    image_pil = transforms.functional.to_pil_image(image)
-    image = numpy.asarray(image_pil)
+    def unload(tensor):
+        # Convert an image from tensor to numpy array in shape (H, W, C)
+        image = output.cpu().clone()
+        image = image.squeeze(0)
+        image_pil = transforms.functional.to_pil_image(image)
+        image = np.array(image_pil)
+        return image
 
     print("Post processing")
-    outimg_mat = matlab.uint8(list(image_pil.getdata()))
-    outimg_mat.reshape((image.size[0], image.size[1], 3))
-
-    inimg_mat = matlab.uint8(list(Image.open(args.content).getdata()))
-    inimg_mat.reshape((image.size[0], image.size[1], 3))
+    inimg = unload(content_img)
+    inimg_mat = matlab.uint8(inimg.tolist())
+    outimg = unload(output)
+    outimg_mat = matlab.uint8(outimg.tolist())
+    #import pdb; pdb.set_trace()
 
     eng = start_matlab()
-    processed_img = image - np.asarray(eng.RF(inimg_mat, 60, 1, 3, inimg_mat)) + 
-            np.asarray(eng.RF(outimg_mat, 60, 1, 3, inimg_mat))
-    plt.imsave(args.output, Image.fromarray(processed_img))
+    processed_img = outimg - np.asarray(eng.RF(inimg_mat, 60., 1., 3, inimg_mat)) + \
+            np.asarray(eng.RF(outimg_mat, 60., 1., 3, inimg_mat))
+    plt.imsave(args.output, Image.fromarray(np.uint8(processed_img)))
     

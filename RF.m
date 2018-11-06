@@ -94,7 +94,7 @@ function F = RF(img, sigma_s, sigma_r, num_iterations, joint_image)
     for i = 0:num_iterations - 1
     
         % Compute the sigma value for this iteration (Equation 14 of our paper).
-        sigma_H_i = sigma_H * sqrt(3) * 2^(N - (i + 1)) / sqrt(4^N - 1);
+        sigma_H_i = sigma_H * sqrt(3) * double(2^(N - (i + 1))) / sqrt(double(4^N - 1));
     
         F = TransformedDomainRecursiveFilter_Horizontal(F, dHdx, sigma_H_i);
         F = image_transpose(F);
