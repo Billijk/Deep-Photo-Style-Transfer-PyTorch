@@ -1,16 +1,14 @@
 from __future__ import print_function
-
+import argparse
+import matlab
+from matlab.engine import start_matlab
 from PIL import Image
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
 from model import run_style_transfer
-
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
@@ -56,15 +54,24 @@ if __name__ == "__main__":
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
                                 content_img, style_img, input_img, device)
 
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
-    unloader = transforms.ToPILImage()  # reconvert into PIL image
+    image = output.cpu().clone()  # we clone the tensor to not do changes on it
+    image = image.squeeze(0)      # remove the fake batch dimension
+    image_pil = transforms.functional.to_pil_image(image)
+    image = numpy.asarray(image_pil)
 
-    def imsave(tensor, path, title=None):
-        image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
-        image = image.squeeze(0)      # remove the fake batch dimension
-        image = unloader(image)
-        if title is not None:
-            plt.title(title)
-        plt.imsave(path, image)
+    print("Post processing")
+    outimg_mat = matlab.uint8(list(image_pil.getdata()))
+    outimg_mat.reshape((image.size[0], image.size[1], 3))
 
-    imsave(output, args.output)
+    inimg_mat = matlab.uint8(list(Image.open(args.content).getdata()))
+    inimg_mat.reshape((image.size[0], image.size[1], 3))
+
+    eng = start_matlab()
+    processed_img = image - np.asarray(eng.RF(inimg_mat, 60, 1, 3, inimg_mat)) + 
+            np.asarray(eng.RF(outimg_mat, 60, 1, 3, inimg_mat))
+    plt.imsave(args.output, Image.fromarray(processed_img))
+    
