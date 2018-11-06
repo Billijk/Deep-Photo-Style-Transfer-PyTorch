@@ -71,57 +71,20 @@ def test(segmentation_module, loader, args):
                 pred = pred + pred_tmp.cpu() / len(args.imgSize)
 
             _, preds = torch.max(pred, dim=1)
-            preds = as_numpy(preds.squeeze(0))
+            preds_visual = as_numpy(preds.squeeze(0))
+            preds = preds.squeeze(0)
+            print(preds)
+            print(preds.size())
 
         # visualization
         visualize_result(
             (batch_data['img_ori'], batch_data['info']),
-            preds, args)
+            preds_visual, args)
 
         print('[{}] iter {}'
               .format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), i))
 
 def main(args):
-    torch.cuda.set_device(args.gpu_id)
-    device = torch.device("cuda")
-    imsize = 512
-    loader = transforms.Compose([
-    transforms.Resize((512,650)),  # scale imported image
-    transforms.ToTensor()])  # transform it into a torch tensor
-    def image_loader(image_name):
-        image = Image.open(image_name)
-        # fake batch dimension required to fit network's input dimensions
-        image = loader(image).unsqueeze(0)
-        return image.to(device, torch.float)
-    style_img = image_loader(args.style)
-    content_img = image_loader(args.content)
-
-    print(style_img.size())
-    print(content_img.size())
-
-    assert style_img.size() == content_img.size()
-
-    input_img = content_img.clone()
-
-    cnn = models.vgg19(pretrained=True).features.to(device).eval()
-    cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
-    cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
-
-    output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, device)
-    unloader = transforms.ToPILImage()
-
-    def imsave(tensor, path, title=None):
-        image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
-        image = image.squeeze(0)      # remove the fake batch dimension
-        image = unloader(image)
-        if title is not None:
-            plt.title(title)
-        plt.imsave(path, image)
-
-    imsave(output, args.output)
-
-    # Network Builders
     builder = ModelBuilder()
     net_encoder = builder.build_encoder(
         arch=args.arch_encoder,
@@ -156,6 +119,46 @@ def main(args):
     test(segmentation_module, loader_val, args)
 
     print('Inference done!')
+
+    torch.cuda.set_device(args.gpu_id)
+    device = torch.device("cuda")
+    imsize = 512
+    loader = transforms.Compose([
+    transforms.Resize((468,700)),  # scale imported image
+    transforms.ToTensor()])  # transform it into a torch tensor
+    def image_loader(image_name):
+        image = Image.open(image_name)
+        # fake batch dimension required to fit network's input dimensions
+        image = loader(image).unsqueeze(0)
+        return image.to(device, torch.float)
+    style_img = image_loader(args.style)
+    content_img = image_loader(args.content)
+
+    print(style_img.size())
+    print(content_img.size())
+
+    assert style_img.size() == content_img.size()
+
+    input_img = content_img.clone()
+
+    cnn = models.vgg19(pretrained=True).features.to(device).eval()
+    cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
+    cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
+
+    output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
+                                content_img, style_img, input_img, device)
+    unloader = transforms.ToPILImage()
+
+    def imsave(tensor, path, title=None):
+        image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
+        image = image.squeeze(0)      # remove the fake batch dimension
+        image = unloader(image)
+        if title is not None:
+            plt.title(title)
+        plt.imsave(path, image)
+
+    imsave(output, args.output)
+
 
 
 if __name__ == '__main__':
