@@ -19,6 +19,17 @@ class ContentLoss(nn.Module):
         self.loss = F.mse_loss(input, self.target)
         return input
 
+
+class SimilarityLoss(nn.Module):
+    def __init__(self, target):
+        super().__init__()
+        self.target = target.detach()
+
+    def forward(self, input):
+        self.loss = F.l1_loss(input, self.target)
+        return input
+
+
 def gram_matrix(input):
     a, b, c, d = input.size()  # a=batch size(=1)
     # b=number of feature maps
@@ -60,11 +71,13 @@ class Normalization(nn.Module):
 
 
 # desired depth layers to compute style/content losses :
+sim_layers_default = ['conv_1', 'conv_2', 'conv_3']
 content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img, device,
+                               sim_layers=sim_layers_default,
                                content_layers=content_layers_default,
                                style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
@@ -74,6 +87,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     # just in order to have an iterable access to or list of content/syle
     # losses
+    sim_losses = []
     content_losses = []
     style_losses = []
 
@@ -101,6 +115,13 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
         model.add_module(name, layer)
 
+        if name in similarity_layers:
+            # add similarity loss:
+            target = model(content_img).detach()
+            sim_loss = SimilarityLoss(target)
+            model.add_module("sim_loss_{}".format(i), sim_loss)
+            sim_losses.append(sim_loss)
+
         if name in content_layers:
             # add content loss:
             target = model(content_img).detach()
@@ -122,7 +143,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     model = model[:(i + 1)]
 
-    return model, style_losses, content_losses
+    return model, style_losses, content_losses, sim_losses
 
 
 def get_input_optimizer(input_img):
@@ -132,10 +153,10 @@ def get_input_optimizer(input_img):
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
                        content_img, style_img, input_img, device, 
-                       num_steps=300, style_weight=1000000, content_weight=1):
+                       num_steps=300, style_weight=1000000, content_weight=1, sim_weights=10):
     """Run the style transfer."""
     print('Building the style transfer model..')
-    model, style_losses, content_losses = get_style_model_and_losses(cnn,
+    model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
         normalization_mean, normalization_std, style_img, content_img, device)
     optimizer = get_input_optimizer(input_img)
 
@@ -151,26 +172,30 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             model(input_img)
             style_score = 0
             content_score = 0
+            sim_score = 0
 
             for sl in style_losses:
                 style_score += sl.loss
             for cl in content_losses:
                 content_score += cl.loss
+            for siml in sim_losses:
+                sim_score += siml.loss
 
             style_score *= style_weight
             content_score *= content_weight
+            sim_score *= sim_weights
 
-            loss = style_score + content_score
+            loss = style_score + content_score + sim_score
             loss.backward()
 
             run[0] += 1
             if run[0] % 50 == 0:
                 print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f}'.format(
-                    style_score.item(), content_score.item()))
+                print('Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
+                    style_score.item(), content_score.item(), sim_score.item()))
                 print()
 
-            return style_score + content_score
+            return style_score + content_score + sim_score
 
         optimizer.step(closure)
 
