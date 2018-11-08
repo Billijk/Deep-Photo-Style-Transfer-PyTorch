@@ -16,6 +16,7 @@ parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
 parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
 parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
+parser.add_argument("--post_it", type=int, default=3, help="Number of iterations for post processing recursive filter. (default: 3)")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,20 +68,18 @@ if __name__ == "__main__":
         image_pil = transforms.functional.to_pil_image(image)
         return image_pil
 
-    output = unload(output)
-    plt.imsave(args.output, output)
-
     print("Post processing")
     inimg = np.array(unload(content_img))
-    inimg_mat = matlab.uint8(inimg.tolist())
-    outimg = np.array(output)
-    outimg_mat = matlab.uint8(outimg.tolist())
+    inimg_mat = matlab.int32(inimg.tolist())
+    outimg = np.array(unload(output))
+    outimg_mat = matlab.int32(outimg.tolist())
     #import pdb; pdb.set_trace()
 
     eng = start_matlab()
-    processed_img = inimg - np.asarray(eng.RF(inimg_mat, args.post_s, args.post_r, 3, inimg_mat)) + \
-            np.asarray(eng.RF(outimg_mat, args.post_s, args.post_r, 3, inimg_mat))
+    processed_img = inimg - np.asarray(eng.RF(inimg_mat, args.post_s, args.post_r, args.post_it, inimg_mat)) + \
+            np.asarray(eng.RF(outimg_mat, args.post_s, args.post_r, args.post_it, inimg_mat))
+    processed_img = np.uint8(np.clip(processed_img, 0, 255))
 
-    save_path = args.output[:-4] + "_post" + args.output[-4:]
-    plt.imsave(save_path, Image.fromarray(np.uint8(processed_img)))
+    save_path = args.output
+    plt.imsave(save_path, Image.fromarray(processed_img))
     
