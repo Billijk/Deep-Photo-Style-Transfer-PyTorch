@@ -34,13 +34,24 @@ def gram_matrix(input):
 
 class StyleLoss(nn.Module):
 
-    def __init__(self, target_feature):
+    def __init__(self, target_feature, style_mask, content_mask):
         super(StyleLoss, self).__init__()
-        self.target = gram_matrix(target_feature).detach()
+        self.style_mask = style_mask
+        self.content_mask = content_mask
+        self.target = target_feature.detach()
+        self.C = set()
+        for elem in self.style_mask.view(-1):
+            self.C.add(elem.item())
+        print(self.C)
 
     def forward(self, input):
-        G = gram_matrix(input)
-        self.loss = F.mse_loss(G, self.target)
+        self.loss = 0
+        for c in self.C:
+            M_c_I = (self.content_mask == c).to(torch.float)
+            M_c_S = (self.style_mask == c).to(torch.float)
+            G_c_O = gram_matrix(input * M_c_I)
+            G_c_S = gram_matrix(self.target * M_c_S)
+            self.loss += F.mse_loss(G_c_O, G_c_S)    
         return input
 
 # create a module to normalize input image so we can easily put it in a
@@ -64,7 +75,7 @@ content_layers_default = ['conv_4']
 style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
-                               style_img, content_img, device,
+                               style_img, content_img, style_mask, content_mask, device,
                                content_layers=content_layers_default,
                                style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
@@ -94,6 +105,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             layer = nn.ReLU(inplace=False)
         elif isinstance(layer, nn.MaxPool2d):
             name = 'pool_{}'.format(i)
+            content_mask = layer(content_mask.to(torch.float)).to(torch.long)
+            style_mask = layer(style_mask.to(torch.float)).to(torch.long)
         elif isinstance(layer, nn.BatchNorm2d):
             name = 'bn_{}'.format(i)
         else:
@@ -111,7 +124,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
         if name in style_layers:
             # add style loss:
             target_feature = model(style_img).detach()
-            style_loss = StyleLoss(target_feature)
+            style_loss = StyleLoss(target_feature, style_mask, content_mask)
             model.add_module("style_loss_{}".format(i), style_loss)
             style_losses.append(style_loss)
 
@@ -131,12 +144,12 @@ def get_input_optimizer(input_img):
     return optimizer
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
-                       content_img, style_img, input_img, device, 
+                       content_img, style_img, input_img, style_mask, content_mask, device, 
                        num_steps=300, style_weight=1000000, content_weight=1):
     """Run the style transfer."""
     print('Building the style transfer model..')
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
-        normalization_mean, normalization_std, style_img, content_img, device)
+        normalization_mean, normalization_std, style_img, content_img, style_mask, content_mask, device)
     optimizer = get_input_optimizer(input_img)
 
     print('Optimizing..')

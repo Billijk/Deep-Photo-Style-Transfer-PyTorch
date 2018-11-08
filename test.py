@@ -88,8 +88,9 @@ def test(segmentation_module, loader, args):
 
         print('[{}] iter {}'
               .format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), i))
+        return preds
 
-def main(args):
+def segment(args):
     builder = ModelBuilder()
     net_encoder = builder.build_encoder(
         arch=args.arch_encoder,
@@ -132,13 +133,18 @@ def main(args):
     segmentation_module.cuda()
 
     # Main loop
-    test(segmentation_module, loader_val1, args)
-    test(segmentation_module, loader_val2, args)
+    style_mask = test(segmentation_module, loader_val1, args)
+    content_mask = test(segmentation_module, loader_val2, args)
+    return style_mask, content_mask
+
+
+def main(args):
     
-
+    style_mask, content_mask = segment(args)
+    torch.save(style_mask, './style_mask.pth')
+    torch.save(content_mask, './content_mask.pth')
     print('Inference done!')
-
-    torch.cuda.set_device(args.gpu_id)
+    """
     device = torch.device("cuda")
     imsize = 512
     loader = transforms.Compose([
@@ -156,6 +162,9 @@ def main(args):
     print(content_img.size())
 
     assert style_img.size() == content_img.size()
+    
+    style_mask = style_mask.detach().to(device)
+    content_mask = content_mask.detach().to(device)
 
     input_img = content_img.clone()
 
@@ -164,7 +173,7 @@ def main(args):
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, device)
+                                content_img, style_img, input_img, style_mask, content_mask, device)
     unloader = transforms.ToPILImage()
 
     def imsave(tensor, path, title=None):
@@ -176,7 +185,7 @@ def main(args):
         plt.imsave(path, image)
 
     imsave(output, args.output)
-
+    """
 
 
 if __name__ == '__main__':
@@ -223,10 +232,11 @@ if __name__ == '__main__':
                         help='folder to output visualization results')
     parser.add_argument('--gpu_id', default=0, type=int,
                         help='gpu_id for evaluation')
+    """
     parser.add_argument("content", type=str, help="Path of content image.")
     parser.add_argument("style", type=str, help="Path of style image.")
     parser.add_argument("output", type=str, help="Path of output image.")
-
+    """
     args = parser.parse_args()
     print(args)
 
