@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
+parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
+parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -59,22 +61,26 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     def unload(tensor):
-        # Convert an image from tensor to numpy array in shape (H, W, C)
-        image = output.cpu().clone()
+        # Convert an image from tensor to PIL image
+        image = tensor.cpu().clone()
         image = image.squeeze(0)
         image_pil = transforms.functional.to_pil_image(image)
-        image = np.array(image_pil)
-        return image
+        return image_pil
+
+    output = unload(output)
+    plt.imsave(args.output, output)
 
     print("Post processing")
-    inimg = unload(content_img)
+    inimg = np.array(unload(content_img))
     inimg_mat = matlab.uint8(inimg.tolist())
-    outimg = unload(output)
+    outimg = np.array(output)
     outimg_mat = matlab.uint8(outimg.tolist())
     #import pdb; pdb.set_trace()
 
     eng = start_matlab()
-    processed_img = outimg - np.asarray(eng.RF(inimg_mat, 60., 1., 3, inimg_mat)) + \
-            np.asarray(eng.RF(outimg_mat, 60., 1., 3, inimg_mat))
-    plt.imsave(args.output, Image.fromarray(np.uint8(processed_img)))
+    processed_img = inimg - np.asarray(eng.RF(inimg_mat, args.post_s, args.post_r, 3, inimg_mat)) + \
+            np.asarray(eng.RF(outimg_mat, args.post_s, args.post_r, 3, inimg_mat))
+
+    save_path = args.output[:-4] + "_post" + args.output[-4:]
+    plt.imsave(save_path, Image.fromarray(np.uint8(processed_img)))
     
