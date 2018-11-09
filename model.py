@@ -72,8 +72,8 @@ class Normalization(nn.Module):
 
 # desired depth layers to compute style/content losses :
 sim_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3']
-content_layers_default = ['conv_3_3']
-style_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3', 'conv_4_3']
+content_layers_default = ['conv_4_2']
+style_layers_default = ['conv_1_1', 'conv_2_1', 'conv_3_1', 'conv_4_1', 'conv_5_1']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img, device,
@@ -101,7 +101,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             j += 1
             name = 'conv_{}_{}'.format(i, j)
         elif isinstance(layer, nn.ReLU):
-            name = 'relu_{}_{}'.format(i)
+            name = 'relu_{}_{}'.format(i, j)
             # The in-place version doesn't play very nicely with the ContentLoss
             # and StyleLoss we insert below. So we replace with out-of-place
             # ones here.
