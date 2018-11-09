@@ -115,7 +115,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
         model.add_module(name, layer)
 
-        if name in similarity_layers:
+        if name in sim_layers:
             # add similarity loss:
             target = model(content_img).detach()
             sim_loss = SimilarityLoss(target)
@@ -153,7 +153,7 @@ def get_input_optimizer(input_img):
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
                        content_img, style_img, input_img, device, 
-                       num_steps=300, style_weight=1000000, content_weight=1, sim_weights=10):
+                       num_steps=300, style_weight=1000000, content_weight=1, sim_weight=10):
     """Run the style transfer."""
     print('Building the style transfer model..')
     model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
@@ -183,7 +183,7 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
             style_score *= style_weight
             content_score *= content_weight
-            sim_score *= sim_weights
+            sim_score *= sim_weight
 
             loss = style_score + content_score + sim_score
             loss.backward()

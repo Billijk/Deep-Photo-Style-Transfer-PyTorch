@@ -16,6 +16,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
+parser.add_argument("--ws", type=float, default=1e6, help="Weight for style loss (default: 10^6).")
+parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
+parser.add_argument("--wsim", type=float, default=100, help="Weight for similarity loss (default: 100).")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,7 +57,8 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, device)
+                                content_img, style_img, input_img, device,
+                                style_weight=args.ws, content_weight=args.wc, sim_weight=args.wsim)
 
 
     unloader = transforms.ToPILImage()  # reconvert into PIL image
