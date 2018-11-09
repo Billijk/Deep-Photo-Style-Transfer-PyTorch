@@ -71,9 +71,9 @@ class Normalization(nn.Module):
 
 
 # desired depth layers to compute style/content losses :
-sim_layers_default = ['conv_1', 'conv_2', 'conv_3']
-content_layers_default = ['conv_4']
-style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
+sim_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3']
+content_layers_default = ['conv_3_3']
+style_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3', 'conv_4_3']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img, device,
@@ -95,21 +95,23 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
     # to put in modules that are supposed to be activated sequentially
     model = nn.Sequential(normalization)
 
-    i = 0  # increment every time we see a conv
+    i, j = 1, 0
     for layer in cnn.children():
         if isinstance(layer, nn.Conv2d):
-            i += 1
-            name = 'conv_{}'.format(i)
+            j += 1
+            name = 'conv_{}_{}'.format(i, j)
         elif isinstance(layer, nn.ReLU):
-            name = 'relu_{}'.format(i)
+            name = 'relu_{}_{}'.format(i)
             # The in-place version doesn't play very nicely with the ContentLoss
             # and StyleLoss we insert below. So we replace with out-of-place
             # ones here.
             layer = nn.ReLU(inplace=False)
         elif isinstance(layer, nn.MaxPool2d):
             name = 'pool_{}'.format(i)
+            i += 1
+            j = 0
         elif isinstance(layer, nn.BatchNorm2d):
-            name = 'bn_{}'.format(i)
+            name = 'bn_{}_{}'.format(i, j)
         else:
             raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
 
