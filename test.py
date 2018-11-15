@@ -18,77 +18,44 @@ from distutils.version import LooseVersion
 import numpy as np
 import torch
 import torch.nn as nn
-from scipy.io import loadmat
 # Our libs
 from dataset import TestDataset
 from models import ModelBuilder, SegmentationModule
-from utils import colorEncode
-from lib.nn import user_scattered_collate, async_copy_to
-from lib.utils import as_numpy, mark_volatile
-import lib.utils.data as torchdata
-import cv2
+from lib.nn import async_copy_to
 
+def segment_img(net, data, args, valid_masks=None):
+    segSize = (468, 700) # TODO: change this using input arguments
+    img_resized_list = batch_data['img_data']
+    pred = torch.zeros(1, args.num_class, segSize[0], segSize[1])
+    for img in img_resized_list:
+        feed_dict = data.copy()
+        feed_dict['img_data'] = img
+        del feed_dict['img_ori']
+        del feed_dict['info']
+        feed_dict = async_copy_to(feed_dict, args.gpu_id)
 
-def visualize_result(data, preds, args):
-    colors = loadmat('data/color150.mat')['colors']
-    (img, info) = data
+        # forward pass
+        pred_tmp = net(feed_dict, segSize=segSize)
+        pred = pred + pred_tmp.cpu() / len(args.imgSize)
 
-    # prediction
-    pred_color = colorEncode(preds, colors)
+    if valid_masks is not None:
+        mask = torch.zeros(1, args.num_class, segSize[0], segSize[1])
+        mask[:, valid_masks, :, :] = 1
+        pred *= mask
 
-    '''
-    # aggregate images and save
-    im_vis = np.concatenate((img, pred_color),
-                            axis=1).astype(np.uint8)
-    '''
-    img_name = info.split('/')[-1]
-    cv2.imwrite(os.path.join(args.result,
-                img_name.replace('.jpg', '.png')), pred_color)
+    _, preds = torch.max(pred, dim=1)
+    preds = preds.squeeze(0)
+    return preds
 
+def test(segmentation_module, data, args):
+    tar_seg = segment_img(segmentation_module, data["tar"], args)
+    in_seg = segment_img(segmentation_module, data["in"], args)
+    return {"in": in_seg, "tar": tar_seg}
 
-def test(segmentation_module, loader, args):
-    segmentation_module.eval()
-
-    for i, batch_data in enumerate(loader):
-        # process data
-        batch_data = batch_data[0]
-        '''
-        segSize = (batch_data['img_ori'].shape[0],
-                   batch_data['img_ori'].shape[1])
-        '''
-        segSize = (468, 700)
-        print('segSize:',segSize)
-
-        img_resized_list = batch_data['img_data']
-
-        with torch.no_grad():
-            pred = torch.zeros(1, args.num_class, segSize[0], segSize[1])
-
-            for img in img_resized_list:
-                feed_dict = batch_data.copy()
-                feed_dict['img_data'] = img
-                del feed_dict['img_ori']
-                del feed_dict['info']
-                feed_dict = async_copy_to(feed_dict, args.gpu_id)
-
-                # forward pass
-                pred_tmp = segmentation_module(feed_dict, segSize=segSize)
-                pred = pred + pred_tmp.cpu() / len(args.imgSize)
-
-            _, preds = torch.max(pred, dim=1)
-            preds_visual = as_numpy(preds.squeeze(0))
-            preds = preds.squeeze(0)
-            print(preds)
-            print(preds.size())
-
-        # visualization
-        visualize_result(
-            (batch_data['img_ori'], batch_data['info']),
-            preds_visual, args)
-
-        print('[{}] iter {}'
-              .format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), i))
-        return preds
+def load_data(data_dict):
+    data_list = [{'fpath_img': data_dict["in"]}, {'fpath_img': data_dict["tar"]}]
+    dset = TestDataset(data_list, args)
+    return {"in": dset[0], "tar": dset[1]}
 
 def segment(args):
     builder = ModelBuilder()
@@ -106,37 +73,18 @@ def segment(args):
     crit = nn.NLLLoss(ignore_index=-1)
 
     segmentation_module = SegmentationModule(net_encoder, net_decoder, crit)
-
-    # Dataset and Loader
-    list_test1 = [{'fpath_img': args.test_img1}]
-    dataset_val1 = TestDataset(
-        list_test1, args, max_sample=args.num_val)
-    loader_val1 = torchdata.DataLoader(
-        dataset_val1,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=user_scattered_collate,
-        num_workers=5,
-        drop_last=True)
-
-    list_test2 = [{'fpath_img': args.test_img2}]
-    dataset_val2 = TestDataset(
-        list_test2, args, max_sample=args.num_val)
-    loader_val2 = torchdata.DataLoader(
-        dataset_val2,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=user_scattered_collate,
-        num_workers=5,
-        drop_last=True)
-
+    segmentation_module.eval()
     segmentation_module.cuda()
 
-    # Main loop
-    style_mask = test(segmentation_module, loader_val1, args)
-    content_mask = test(segmentation_module, loader_val2, args)
-    return style_mask, content_mask
+    # Dataset and Loader
+    data_dict = {"in": args.in_img, "tar": args.tar_img}
+    data = load_data(data_dict)
 
+    # Main loop
+    with torch.no_grad():
+        res = test(segmentation_module, data, args)
+    return res
+    
 
 def main(args):
     
@@ -144,48 +92,6 @@ def main(args):
     torch.save(style_mask, './style_mask.pth')
     torch.save(content_mask, './content_mask.pth')
     print('Inference done!')
-    """
-    device = torch.device("cuda")
-    imsize = 512
-    loader = transforms.Compose([
-    transforms.Resize((468,700)),  # scale imported image
-    transforms.ToTensor()])  # transform it into a torch tensor
-    def image_loader(image_name):
-        image = Image.open(image_name)
-        # fake batch dimension required to fit network's input dimensions
-        image = loader(image).unsqueeze(0)
-        return image.to(device, torch.float)
-    style_img = image_loader(args.style)
-    content_img = image_loader(args.content)
-
-    print(style_img.size())
-    print(content_img.size())
-
-    assert style_img.size() == content_img.size()
-    
-    style_mask = style_mask.detach().to(device)
-    content_mask = content_mask.detach().to(device)
-
-    input_img = content_img.clone()
-
-    cnn = models.vgg19(pretrained=True).features.to(device).eval()
-    cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
-    cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
-
-    output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, style_mask, content_mask, device)
-    unloader = transforms.ToPILImage()
-
-    def imsave(tensor, path, title=None):
-        image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
-        image = image.squeeze(0)      # remove the fake batch dimension
-        image = unloader(image)
-        if title is not None:
-            plt.title(title)
-        plt.imsave(path, image)
-
-    imsave(output, args.output)
-    """
 
 
 if __name__ == '__main__':
@@ -194,8 +100,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     # Path related arguments
-    parser.add_argument('--test_img1', required=True)
-    parser.add_argument('--test_img2', required=True)
+    parser.add_argument('--in_img', required=True)
+    parser.add_argument('--tar_img', required=True)
     parser.add_argument('--model_path', required=True,
                         help='folder to model path')
     parser.add_argument('--suffix', default='_epoch_20.pth',
@@ -226,12 +132,6 @@ if __name__ == '__main__':
                         help='maxmimum downsampling rate of the network')
     parser.add_argument('--segm_downsampling_rate', default=8, type=int,
                         help='downsampling rate of the segmentation label')
-
-    # Misc arguments
-    parser.add_argument('--result', default='.',
-                        help='folder to output visualization results')
-    parser.add_argument('--gpu_id', default=0, type=int,
-                        help='gpu_id for evaluation')
     """
     parser.add_argument("content", type=str, help="Path of content image.")
     parser.add_argument("style", type=str, help="Path of style image.")
