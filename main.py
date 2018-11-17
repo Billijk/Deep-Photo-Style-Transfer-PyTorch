@@ -15,15 +15,17 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
+parser.add_argument("masks", type=str, help="Path of masks.")
 parser.add_argument("output", type=str, help="Path of output image.")
 args = parser.parse_args()
 
-style_mask = torch.load('style_mask.pth')
-content_mask = torch.load('content_mask.pth')
+masks = torch.load(args.masks)
+style_mask = masks["tar"]
+content_mask = masks["in"]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-style_mask = style_mask.detach().to(device).unsqueeze(0).unsqueeze(0)
-content_mask = content_mask.detach().to(device).unsqueeze(0).unsqueeze(0)
+style_mask = style_mask.detach().to(device).unsqueeze(1)
+content_mask = content_mask.detach().to(device).unsqueeze(1)
 # desired size of the output image
 imsize = 512 if torch.cuda.is_available() else 128  # use small size if no gpu
 

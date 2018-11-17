@@ -35,23 +35,20 @@ def gram_matrix(input):
 class StyleLoss(nn.Module):
 
     def __init__(self, target_feature, style_mask, content_mask):
+        """
+        Target feature: 1 x channel x H x W
+        Mask: Layer x 1 x H x W
+        """
         super(StyleLoss, self).__init__()
         self.style_mask = style_mask
         self.content_mask = content_mask
         self.target = target_feature.detach()
-        self.C = set()
-        for elem in self.style_mask.view(-1):
-            self.C.add(elem.item())
-        print(self.C)
 
     def forward(self, input):
         self.loss = 0
-        for c in self.C:
-            M_c_I = (self.content_mask == c).to(torch.float)
-            M_c_S = (self.style_mask == c).to(torch.float)
-            G_c_O = gram_matrix(input * M_c_I)
-            G_c_S = gram_matrix(self.target * M_c_S)
-            self.loss += F.mse_loss(G_c_O, G_c_S)    
+        G_c_O = gram_matrix(input * self.content_mask)
+        G_c_S = gram_matrix(self.target * self.style_mask)
+        self.loss += F.mse_loss(G_c_O, G_c_S)    
         return input
 
 # create a module to normalize input image so we can easily put it in a

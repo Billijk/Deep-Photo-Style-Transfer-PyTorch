@@ -45,6 +45,7 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         mask = torch.zeros(1, args.num_class, segSize[0], segSize[1])
         mask[:, valid_masks, :, :] = 1
         pred *= mask
+        pred = pred / (pred.max(dim=0)[0] - pred.min(dim=0)[0])
 
     # cut off
     pred[pred < cutoff] = 0
@@ -58,6 +59,7 @@ def test(segmentation_module, data, args):
     # only keep valid category layers
     in_seg = in_seg[valid_categories]
     tar_seg = tar_seg[valid_categories]
+    print("Categories: ", valid_categories)
     return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
 
 def load_data(data_dict):
