@@ -48,8 +48,7 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
 
     # cut off
     pred[pred < cutoff] = 0
-    preds = preds.squeeze(0)
-    return preds
+    return pred.squeeze()
 
 def test(segmentation_module, data, args):
     tar_seg = segment_img(segmentation_module, data["tar"], args)
