@@ -25,14 +25,14 @@ from lib.nn import async_copy_to
 
 def segment_img(net, data, args, valid_masks=None):
     segSize = (468, 700) # TODO: change this using input arguments
-    img_resized_list = batch_data['img_data']
+    img_resized_list = data['img_data']
     pred = torch.zeros(1, args.num_class, segSize[0], segSize[1])
     for img in img_resized_list:
         feed_dict = data.copy()
         feed_dict['img_data'] = img
         del feed_dict['img_ori']
         del feed_dict['info']
-        feed_dict = async_copy_to(feed_dict, args.gpu_id)
+        feed_dict = async_copy_to(feed_dict, 0)
 
         # forward pass
         pred_tmp = net(feed_dict, segSize=segSize)
@@ -150,8 +150,5 @@ if __name__ == '__main__':
 
     assert os.path.exists(args.weights_encoder) and \
         os.path.exists(args.weights_encoder), 'checkpoint does not exitst!'
-
-    if not os.path.isdir(args.result):
-        os.makedirs(args.result)
 
     main(args)
