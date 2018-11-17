@@ -23,7 +23,10 @@ from dataset import TestDataset
 from models import ModelBuilder, SegmentationModule
 from lib.nn import async_copy_to
 
-def segment_img(net, data, args, valid_masks=None):
+def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
+    """
+    return Tensor (Categories, H, W)
+    """
     segSize = (468, 700) # TODO: change this using input arguments
     img_resized_list = data['img_data']
     pred = torch.zeros(1, args.num_class, segSize[0], segSize[1])
@@ -43,14 +46,20 @@ def segment_img(net, data, args, valid_masks=None):
         mask[:, valid_masks, :, :] = 1
         pred *= mask
 
-    _, preds = torch.max(pred, dim=1)
+    # cut off
+    pred[pred < cutoff] = 0
     preds = preds.squeeze(0)
     return preds
 
 def test(segmentation_module, data, args):
     tar_seg = segment_img(segmentation_module, data["tar"], args)
-    in_seg = segment_img(segmentation_module, data["in"], args)
-    return {"in": in_seg, "tar": tar_seg}
+    valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
+    # input image can only be segmented with categories in target image
+    in_seg = segment_img(segmentation_module, data["in"], args, valid_categories)
+    # only keep valid category layers
+    in_seg = in_seg[valid_categories]
+    tar_seg = tar_seg[valid_categories]
+    return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
 
 def load_data(data_dict):
     data_list = [{'fpath_img': data_dict["in"]}, {'fpath_img': data_dict["tar"]}]
@@ -88,8 +97,8 @@ def segment(args):
 
 def main(args):
     
-    style_mask, content_mask = segment(args)
-    torch.save([style_mask, content_mask], args.save_path)
+    res = segment(args)
+    torch.save(res, args.save_path)
     print('Inference done!')
 
 
