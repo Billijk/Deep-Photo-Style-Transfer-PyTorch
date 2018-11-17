@@ -89,8 +89,7 @@ def segment(args):
 def main(args):
     
     style_mask, content_mask = segment(args)
-    torch.save(style_mask, './style_mask.pth')
-    torch.save(content_mask, './content_mask.pth')
+    torch.save([style_mask, content_mask], args.save_path)
     print('Inference done!')
 
 
@@ -102,6 +101,7 @@ if __name__ == '__main__':
     # Path related arguments
     parser.add_argument('--in_img', required=True)
     parser.add_argument('--tar_img', required=True)
+    parser.add_argument('--save_path', required=True)
     parser.add_argument('--model_path', required=True,
                         help='folder to model path')
     parser.add_argument('--suffix', default='_epoch_20.pth',
