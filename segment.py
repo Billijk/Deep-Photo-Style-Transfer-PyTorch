@@ -23,6 +23,18 @@ from dataset import TestDataset
 from models import ModelBuilder, SegmentationModule
 from lib.nn import async_copy_to
 
+category_merge_list = [
+    [22, 27, 61, 129],                              # Water class: ’water’, ’sea’, ’river’, ’lake’
+    [18, 10, 73, 5, 33],                            # Tree class: ’plant’, ’grass’, ’tree’, ’fence’
+    [26, 2, 49, 48, 1, 80, 85],                     # Building class: ’house’, ’building’, ’skyscraper’, ’wall’, ’hovel’, ’tower’
+    [7, 53, 12, 47, 69, 14, 30, 95, 52, 102, 92],   # Road class: ’road’, ’path’, ’sidewalk’, ’sand’, ’hill’, ’earth’, ’field’, ’land’, ’grandstand’, ’stage’, ’dirt track’
+    [87, 6],                                        # Roof class: ’awning’, ’ceiling’
+    [17, 35],                                       # Mountain class: ’mountain’, ’rock’
+    [60, 54, 122],                                  # Stair class: ’stairway’, ’stairs’, ’step’
+    [76, 20, 31, 32, 24, 70],                       # Chair class: "chair’, ’seat’, ’armchair’, ’sofa’, ’bench’, ’swivel chair’
+    [21, 81, 84, 103]                               # Vehicle class: ’car’, ’bus’, ’truck’, ’van’
+]
+
 def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
     """
     return Tensor (Categories, H, W)
@@ -49,17 +61,27 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
 
     # cut off
     pred[pred < cutoff] = 0
-    return pred.squeeze()
+    return pred.detach().squeeze()
 
 def test(segmentation_module, data, args):
     tar_seg = segment_img(segmentation_module, data["tar"], args)
     valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
     # input image can only be segmented with categories in target image
     in_seg = segment_img(segmentation_module, data["in"], args, valid_categories)
+
+    # merge categories
+    for cat in category_merge_list:
+        tar_seg[cat[0]] = sum(tar_seg[cat])
+        tar_seg[cat[1:]] = 0
+        in_seg[cat[0]] = sum(in_seg[cat])
+        in_seg[cat[1:]] = 0
+    
     # only keep valid category layers
+    valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
     in_seg = in_seg[valid_categories]
     tar_seg = tar_seg[valid_categories]
     print("Categories: ", valid_categories)
+
     return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
 
 def load_data(data_dict):
@@ -68,16 +90,25 @@ def load_data(data_dict):
     return {"in": dset[0], "tar": dset[1]}
 
 def segment(args):
+    # absolute paths of model weights
+    weights_encoder = os.path.join(args.model_path,
+                                        'encoder' + args.suffix)
+    weights_decoder = os.path.join(args.model_path,
+                                        'decoder' + args.suffix)
+
+    assert os.path.exists(weights_encoder) and \
+        os.path.exists(weights_encoder), 'checkpoint does not exitst!'
+
     builder = ModelBuilder()
     net_encoder = builder.build_encoder(
         arch=args.arch_encoder,
         fc_dim=args.fc_dim,
-        weights=args.weights_encoder)
+        weights=weights_encoder)
     net_decoder = builder.build_decoder(
         arch=args.arch_decoder,
         fc_dim=args.fc_dim,
         num_class=args.num_class,
-        weights=args.weights_decoder,
+        weights=weights_decoder,
         use_softmax=True)
 
     crit = nn.NLLLoss(ignore_index=-1)
@@ -87,32 +118,23 @@ def segment(args):
     segmentation_module.cuda()
 
     # Dataset and Loader
-    data_dict = {"in": args.in_img, "tar": args.tar_img}
+    data_dict = {"in": args.content, "tar": args.style}
     data = load_data(data_dict)
 
     # Main loop
     with torch.no_grad():
         res = test(segmentation_module, data, args)
+    print('Inference done!')
     return res
     
 
 def main(args):
-    
     res = segment(args)
     torch.save(res, args.save_path)
-    print('Inference done!')
 
 
-if __name__ == '__main__':
-    assert LooseVersion(torch.__version__) >= LooseVersion('0.4.0'), \
-        'PyTorch>=0.4.0 is required'
-
-    parser = argparse.ArgumentParser()
-    # Path related arguments
-    parser.add_argument('--in_img', required=True)
-    parser.add_argument('--tar_img', required=True)
-    parser.add_argument('--save_path', required=True)
-    parser.add_argument('--model_path', required=True,
+def add_arguments(parser):
+    parser.add_argument('--model_path', default='models',
                         help='folder to model path')
     parser.add_argument('--suffix', default='_epoch_20.pth',
                         help="which snapshot to load")
@@ -142,23 +164,19 @@ if __name__ == '__main__':
                         help='maxmimum downsampling rate of the network')
     parser.add_argument('--segm_downsampling_rate', default=8, type=int,
                         help='downsampling rate of the segmentation label')
-    """
-    parser.add_argument("content", type=str, help="Path of content image.")
-    parser.add_argument("style", type=str, help="Path of style image.")
-    parser.add_argument("output", type=str, help="Path of output image.")
-    """
+
+
+if __name__ == '__main__':
+    assert LooseVersion(torch.__version__) >= LooseVersion('0.4.0'), \
+        'PyTorch>=0.4.0 is required'
+
+    parser = argparse.ArgumentParser()
+    # Path related arguments
+    parser.add_argument('--content', required=True)
+    parser.add_argument('--style', required=True)
+    parser.add_argument('--save_path', required=True)
+    add_arguments(parser)
     args = parser.parse_args()
     print(args)
-
-    
-
-    # absolute paths of model weights
-    args.weights_encoder = os.path.join(args.model_path,
-                                        'encoder' + args.suffix)
-    args.weights_decoder = os.path.join(args.model_path,
-                                        'decoder' + args.suffix)
-
-    assert os.path.exists(args.weights_encoder) and \
-        os.path.exists(args.weights_encoder), 'checkpoint does not exitst!'
 
     main(args)

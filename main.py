@@ -9,23 +9,20 @@ import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
 from model import run_style_transfer
+from segment import add_arguments
 
 import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
-parser.add_argument("masks", type=str, help="Path of masks.")
 parser.add_argument("output", type=str, help="Path of output image.")
+parser.add_argument("--masks", type=str, help="Path of masks to load.")
+add_arguments(parser)
 args = parser.parse_args()
 
-masks = torch.load(args.masks)
-style_mask = masks["tar"]
-content_mask = masks["in"]
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-style_mask = style_mask.detach().to(device).unsqueeze(1)
-content_mask = content_mask.detach().to(device).unsqueeze(1)
+
 # desired size of the output image
 imsize = 512 if torch.cuda.is_available() else 128  # use small size if no gpu
 
@@ -41,6 +38,21 @@ def image_loader(image_name):
     return image.to(device, torch.float)
 
 
+def load_masks():
+    if args.masks is None:
+        # create masks
+        from segment import segment
+        masks = segment(args)
+    else:
+        # load masks
+        masks = torch.load(args.masks)
+
+    style_mask = masks["tar"]
+    content_mask = masks["in"]
+    style_mask = style_mask.to(device).unsqueeze(1)
+    content_mask = content_mask.to(device).unsqueeze(1)
+
+
 if __name__ == "__main__":
 
     style_img = image_loader(args.style)
@@ -54,6 +66,8 @@ if __name__ == "__main__":
     input_img = content_img.clone()
     # if you want to use white noise instead uncomment the below line:
     # input_img = torch.randn(content_img.data.size(), device=device)
+
+    style_mask, content_mask = load_masks()
 
     cnn = models.vgg19(pretrained=True).features.to(device).eval()
     cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)

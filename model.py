@@ -102,8 +102,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             layer = nn.ReLU(inplace=False)
         elif isinstance(layer, nn.MaxPool2d):
             name = 'pool_{}'.format(i)
-            content_mask = layer(content_mask.to(torch.float)).to(torch.long)
-            style_mask = layer(style_mask.to(torch.float)).to(torch.long)
+            content_mask = layer(content_mask)
+            style_mask = layer(style_mask)
         elif isinstance(layer, nn.BatchNorm2d):
             name = 'bn_{}'.format(i)
         else:
