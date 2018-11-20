@@ -4,6 +4,7 @@ import matlab
 from matlab.engine import start_matlab
 from PIL import Image
 import numpy as np
+import os
 
 import torch
 import torchvision.transforms as transforms
@@ -94,10 +95,16 @@ if __name__ == "__main__":
         image_pil = transforms.functional.to_pil_image(image)
         return image_pil
 
+    output = unload(output)
+    save_path = args.output
+    plt.imsave(save_path, output)
+    print("Save image to {}".format(save_path))
+
+
     print("Post processing")
     inimg = np.array(unload(content_img))
     inimg_mat = matlab.int32(inimg.tolist())
-    outimg = np.array(unload(output))
+    outimg = np.array(output)
     outimg_mat = matlab.int32(outimg.tolist())
 
     eng = start_matlab()
@@ -105,6 +112,8 @@ if __name__ == "__main__":
             np.asarray(eng.RF(outimg_mat, args.post_s, args.post_r, args.post_it, inimg_mat))
     processed_img = np.uint8(np.clip(processed_img, 0, 255))
 
-    save_path = args.output
+    output_rt, output_ext = os.path.splitext(args.output)
+    save_path = output_rt + "_post" + output_ext
+    print("Save post processed image to {}".format(save_path))
     plt.imsave(save_path, Image.fromarray(processed_img))
     
