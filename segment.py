@@ -71,20 +71,21 @@ def test(segmentation_module, data, args):
 
     # merge categories
     for cat in category_merge_list:
-        tar_seg[cat[0]] = sum(tar_seg[cat])
+        cat = np.array(cat) - 1     # convert to 0-index
+        tar_seg[cat[0]] = tar_seg[cat].sum(dim=0)
         tar_seg[cat[1:]] = 0
-        in_seg[cat[0]] = sum(in_seg[cat])
+        in_seg[cat[0]] = in_seg[cat].sum(dim=0)
         in_seg[cat[1:]] = 0
     
     # only keep valid category layers
     valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
     in_seg = in_seg[valid_categories]
     tar_seg = tar_seg[valid_categories]
-    print("Categories: ", valid_categories)
+    print("Categories: ", valid_categories + 1) # convert to 1-index for showing
 
     return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
 
-def load_data(data_dict):
+def load_data(data_dict, args):
     data_list = [{'fpath_img': data_dict["in"]}, {'fpath_img': data_dict["tar"]}]
     dset = TestDataset(data_list, args)
     return {"in": dset[0], "tar": dset[1]}
@@ -119,7 +120,7 @@ def segment(args):
 
     # Dataset and Loader
     data_dict = {"in": args.content, "tar": args.style}
-    data = load_data(data_dict)
+    data = load_data(data_dict, args)
 
     # Main loop
     with torch.no_grad():

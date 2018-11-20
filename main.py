@@ -51,6 +51,7 @@ def load_masks():
     content_mask = masks["in"]
     style_mask = style_mask.to(device).unsqueeze(1)
     content_mask = content_mask.to(device).unsqueeze(1)
+    return style_mask, content_mask
 
 
 if __name__ == "__main__":

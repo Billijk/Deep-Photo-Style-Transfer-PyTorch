@@ -12,5 +12,5 @@ for mask, save_root in zip(mask_tensors, ["style/", "content/"]):
         os.makedirs(save_root)
     
     for tensor, idx in zip(mask, masks["categories"]):
-        path = os.path.join(save_root, "{}.png".format(idx))
+        path = os.path.join(save_root, "{}.png".format(idx + 1))    # convert 0-index to 1-index
         plt.imsave(path, tensor.numpy())
