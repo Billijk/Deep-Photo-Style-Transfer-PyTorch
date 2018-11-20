@@ -79,9 +79,9 @@ class Normalization(nn.Module):
 
 
 # desired depth layers to compute style/content losses :
-sim_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3']
-content_layers_default = ['conv_4_2']
-style_layers_default = ['conv_1_1', 'conv_2_1', 'conv_3_1', 'conv_4_1', 'conv_5_1']
+sim_layers_default = ['conv_1', 'conv_2', 'conv_3']
+content_layers_default = ['conv_4']
+style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img, style_mask, content_mask, device,
@@ -103,13 +103,13 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
     # to put in modules that are supposed to be activated sequentially
     model = nn.Sequential(normalization)
 
-    i, j = 1, 0
+    i = 0
     for layer in cnn.children():
         if isinstance(layer, nn.Conv2d):
-            j += 1
-            name = 'conv_{}_{}'.format(i, j)
+            i += 1
+            name = 'conv_{}'.format(i)
         elif isinstance(layer, nn.ReLU):
-            name = 'relu_{}_{}'.format(i, j)
+            name = 'relu_{}'.format(i)
             # The in-place version doesn't play very nicely with the ContentLoss
             # and StyleLoss we insert below. So we replace with out-of-place
             # ones here.
@@ -118,10 +118,8 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             name = 'pool_{}'.format(i)
             content_mask = layer(content_mask)
             style_mask = layer(style_mask)
-            i += 1
-            j = 0
         elif isinstance(layer, nn.BatchNorm2d):
-            name = 'bn_{}_{}'.format(i, j)
+            name = 'bn_{}'.format(i)
         else:
             raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
 
@@ -165,10 +163,10 @@ def get_input_optimizer(input_img):
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
                        content_img, style_img, input_img, style_mask, content_mask, device, 
-                       num_steps=300, style_weight=100000000, content_weight=1):
+                       num_steps=300, style_weight=1000000, content_weight=1, sim_weight=10):
     """Run the style transfer."""
     print('Building the style transfer model..')
-    model, style_losses, content_losses = get_style_model_and_losses(cnn,
+    model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
         normalization_mean, normalization_std, style_img, content_img, style_mask, content_mask, device)
     optimizer = get_input_optimizer(input_img)
 

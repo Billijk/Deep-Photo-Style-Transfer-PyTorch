@@ -23,6 +23,7 @@ parser.add_argument("--post_it", type=int, default=3, help="Number of iterations
 parser.add_argument("--ws", type=float, default=1e6, help="Weight for style loss (default: 10^6).")
 parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
 parser.add_argument("--wsim", type=float, default=10, help="Weight for similarity loss (default: 10).")
+add_arguments(parser)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
