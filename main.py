@@ -1,9 +1,9 @@
 from __future__ import print_function
-
+import argparse
+import matlab
+from matlab.engine import start_matlab
 from PIL import Image
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torchvision.transforms as transforms
@@ -11,14 +11,15 @@ import torchvision.models as models
 from model import run_style_transfer
 from segment import add_arguments
 
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
 parser.add_argument("--masks", type=str, help="Path of masks to load.")
-add_arguments(parser)
+parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
+parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
+parser.add_argument("--post_it", type=int, default=3, help="Number of iterations for post processing recursive filter. (default: 3)")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,17 +76,30 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, style_mask, content_mask, device)
+            content_img, style_img, input_img, style_mask, content_mask, device)
 
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
-    unloader = transforms.ToPILImage()  # reconvert into PIL image
+    def unload(tensor):
+        # Convert an image from tensor to PIL image
+        image = tensor.cpu().clone()
+        image = image.squeeze(0)
+        image_pil = transforms.functional.to_pil_image(image)
+        return image_pil
 
-    def imsave(tensor, path, title=None):
-        image = tensor.cpu().clone()  # we clone the tensor to not do changes on it
-        image = image.squeeze(0)      # remove the fake batch dimension
-        image = unloader(image)
-        if title is not None:
-            plt.title(title)
-        plt.imsave(path, image)
+    print("Post processing")
+    inimg = np.array(unload(content_img))
+    inimg_mat = matlab.int32(inimg.tolist())
+    outimg = np.array(unload(output))
+    outimg_mat = matlab.int32(outimg.tolist())
 
-    imsave(output, args.output)
+    eng = start_matlab()
+    processed_img = inimg - np.asarray(eng.RF(inimg_mat, args.post_s, args.post_r, args.post_it, inimg_mat)) + \
+            np.asarray(eng.RF(outimg_mat, args.post_s, args.post_r, args.post_it, inimg_mat))
+    processed_img = np.uint8(np.clip(processed_img, 0, 255))
+
+    save_path = args.output
+    plt.imsave(save_path, Image.fromarray(processed_img))
+    
