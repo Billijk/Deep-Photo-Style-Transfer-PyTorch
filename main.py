@@ -20,6 +20,9 @@ parser.add_argument("--masks", type=str, help="Path of masks to load.")
 parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
 parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
 parser.add_argument("--post_it", type=int, default=3, help="Number of iterations for post processing recursive filter. (default: 3)")
+parser.add_argument("--ws", type=float, default=1e6, help="Weight for style loss (default: 10^6).")
+parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
+parser.add_argument("--wsim", type=float, default=10, help="Weight for similarity loss (default: 10).")
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -76,7 +79,8 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-            content_img, style_img, input_img, style_mask, content_mask, device)
+                                content_img, style_img, input_img, style_mask, content_mask, device,
+                                style_weight=args.ws, content_weight=args.wc, sim_weight=args.wsim)
 
     import matplotlib
     matplotlib.use('Agg')

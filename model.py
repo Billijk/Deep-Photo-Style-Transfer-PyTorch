@@ -19,6 +19,17 @@ class ContentLoss(nn.Module):
         self.loss = F.mse_loss(input, self.target)
         return input
 
+
+class SimilarityLoss(nn.Module):
+    def __init__(self, target):
+        super().__init__()
+        self.target = target.detach()
+
+    def forward(self, input):
+        self.loss = F.l1_loss(input, self.target)
+        return input
+
+
 def gram_matrix(input):
     a, b, c, d = input.size()  # a=batch size(=1)
     # b=number of feature maps
@@ -68,11 +79,13 @@ class Normalization(nn.Module):
 
 
 # desired depth layers to compute style/content losses :
-content_layers_default = ['conv_4']
-style_layers_default = ['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5']
+sim_layers_default = ['conv_1_2', 'conv_2_2', 'conv_3_3']
+content_layers_default = ['conv_4_2']
+style_layers_default = ['conv_1_1', 'conv_2_1', 'conv_3_1', 'conv_4_1', 'conv_5_1']
 
 def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
                                style_img, content_img, style_mask, content_mask, device,
+                               sim_layers=sim_layers_default,
                                content_layers=content_layers_default,
                                style_layers=style_layers_default):
     cnn = copy.deepcopy(cnn)
@@ -82,6 +95,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     # just in order to have an iterable access to or list of content/syle
     # losses
+    sim_losses = []
     content_losses = []
     style_losses = []
 
@@ -89,13 +103,13 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
     # to put in modules that are supposed to be activated sequentially
     model = nn.Sequential(normalization)
 
-    i = 0  # increment every time we see a conv
+    i, j = 1, 0
     for layer in cnn.children():
         if isinstance(layer, nn.Conv2d):
-            i += 1
-            name = 'conv_{}'.format(i)
+            j += 1
+            name = 'conv_{}_{}'.format(i, j)
         elif isinstance(layer, nn.ReLU):
-            name = 'relu_{}'.format(i)
+            name = 'relu_{}_{}'.format(i, j)
             # The in-place version doesn't play very nicely with the ContentLoss
             # and StyleLoss we insert below. So we replace with out-of-place
             # ones here.
@@ -104,12 +118,21 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
             name = 'pool_{}'.format(i)
             content_mask = layer(content_mask)
             style_mask = layer(style_mask)
+            i += 1
+            j = 0
         elif isinstance(layer, nn.BatchNorm2d):
-            name = 'bn_{}'.format(i)
+            name = 'bn_{}_{}'.format(i, j)
         else:
             raise RuntimeError('Unrecognized layer: {}'.format(layer.__class__.__name__))
 
         model.add_module(name, layer)
+
+        if name in sim_layers:
+            # add similarity loss:
+            target = model(content_img).detach()
+            sim_loss = SimilarityLoss(target)
+            model.add_module("sim_loss_{}".format(i), sim_loss)
+            sim_losses.append(sim_loss)
 
         if name in content_layers:
             # add content loss:
@@ -132,7 +155,7 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
 
     model = model[:(i + 1)]
 
-    return model, style_losses, content_losses
+    return model, style_losses, content_losses, sim_losses
 
 
 def get_input_optimizer(input_img):
@@ -161,26 +184,30 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
             model(input_img)
             style_score = 0
             content_score = 0
+            sim_score = 0
 
             for sl in style_losses:
                 style_score += sl.loss
             for cl in content_losses:
                 content_score += cl.loss
+            for siml in sim_losses:
+                sim_score += siml.loss
 
             style_score *= style_weight
             content_score *= content_weight
+            sim_score *= sim_weight
 
-            loss = style_score + content_score
+            loss = style_score + content_score + sim_score
             loss.backward()
 
             run[0] += 1
             if run[0] % 50 == 0:
                 print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f}'.format(
-                    style_score.item(), content_score.item()))
+                print('Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
+                    style_score.item(), content_score.item(), sim_score.item()))
                 print()
 
-            return style_score + content_score
+            return style_score + content_score + sim_score
 
         optimizer.step(closure)
 
