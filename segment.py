@@ -26,7 +26,7 @@ from lib.nn import async_copy_to
 category_merge_list = [
     [22, 27, 61, 129],                              # Water class: ’water’, ’sea’, ’river’, ’lake’
     [18, 10, 73, 5, 33],                            # Tree class: ’plant’, ’grass’, ’tree’, ’fence’
-    [26, 2, 48, 1, 80, 85],                     # Building class: ’house’, ’building’, ’skyscraper’, ’wall’, ’hovel’, ’tower’
+    [26, 2, 48, 1, 80, 85],                         # Building class: ’house’, ’building’, ’skyscraper’, ’wall’, ’hovel’, ’tower’
     [7, 53, 12, 47, 69, 14, 30, 95, 52, 102, 92],   # Road class: ’road’, ’path’, ’sidewalk’, ’sand’, ’hill’, ’earth’, ’field’, ’land’, ’grandstand’, ’stage’, ’dirt track’
     [87, 6],                                        # Roof class: ’awning’, ’ceiling’
     [17, 35],                                       # Mountain class: ’mountain’, ’rock’
