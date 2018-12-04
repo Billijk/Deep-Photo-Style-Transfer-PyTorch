@@ -57,7 +57,7 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         mask = torch.zeros(1, args.num_class, segSize[0], segSize[1])
         mask[:, valid_masks, :, :] = 1
         pred *= mask
-        pred = pred / (pred.max(dim=1)[0] - pred.min(dim=1)[0] + 1e-6)
+        pred = pred / (pred.sum(dim=1) + 1e-6)
 
     # cut off
     pred[pred < cutoff] = 0
