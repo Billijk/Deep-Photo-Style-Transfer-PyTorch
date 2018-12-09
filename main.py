@@ -18,6 +18,7 @@ parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
 parser.add_argument("--masks", type=str, help="Path of masks to load.")
+parser.add_argument("--lr", type=float, default=1.0, help="Initial learning rate.")
 parser.add_argument("--iters", type=int, default=300, help="Number of iterations to run.")
 parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
 parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
@@ -83,7 +84,7 @@ if __name__ == "__main__":
 
     output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
                                 content_img, style_img, input_img, style_mask, content_mask, device,
-                                num_steps=args.iters,
+                                lr=args.lr, num_steps=args.iters,
                                 style_weight=args.ws, content_weight=args.wc, sim_weight=args.wsim)
 
     import matplotlib

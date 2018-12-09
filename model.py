@@ -156,19 +156,19 @@ def get_style_model_and_losses(cnn, normalization_mean, normalization_std,
     return model, style_losses, content_losses, sim_losses
 
 
-def get_input_optimizer(input_img):
+def get_input_optimizer(input_img, lr):
     # this line to show that input is a parameter that requires a gradient
-    optimizer = optim.LBFGS([input_img.requires_grad_()])
+    optimizer = optim.LBFGS([input_img.requires_grad_()], lr=lr)
     return optimizer
 
 def run_style_transfer(cnn, normalization_mean, normalization_std,
                        content_img, style_img, input_img, style_mask, content_mask, device, 
-                       num_steps=300, style_weight=1000000, content_weight=1, sim_weight=10):
+                       lr=1.0, num_steps=300, style_weight=1000000, content_weight=1, sim_weight=10):
     """Run the style transfer."""
     print('Building the style transfer model..')
     model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
         normalization_mean, normalization_std, style_img, content_img, style_mask, content_mask, device)
-    optimizer = get_input_optimizer(input_img)
+    optimizer = get_input_optimizer(input_img, lr)
 
     print('Optimizing..')
     run = [0]
@@ -200,10 +200,8 @@ def run_style_transfer(cnn, normalization_mean, normalization_std,
 
             run[0] += 1
             if run[0] % 50 == 0:
-                print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
-                    style_score.item(), content_score.item(), sim_score.item()))
-                print()
+                print('run {}: Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
+                    run, style_score.item(), content_score.item(), sim_score.item()))
 
             return style_score + content_score + sim_score
 
