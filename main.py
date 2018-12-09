@@ -4,6 +4,7 @@ import matlab
 from matlab.engine import start_matlab
 from PIL import Image
 import numpy as np
+import os
 
 import torch
 import torchvision.transforms.functional as t_func
@@ -17,11 +18,16 @@ parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
 parser.add_argument("--step", type=int, default=300, help="Number of steps to optimize.")
 parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
+parser.add_argument("--masks", type=str, help="Path of masks to load.")
+parser.add_argument("--lr", type=float, default=1.0, help="Initial learning rate.")
+parser.add_argument("--iters", type=int, default=300, help="Number of iterations to run.")
 parser.add_argument("--laplacian", type=str, default="", help="Load pre-calculated matting laplacian values."
         "If this is not specified, then a new values will be calculated and saved on disk.")
 parser.add_argument("--wr", type=float, default=1e4, help="Weight for photorealism regularization (default: 10000).")
 parser.add_argument("--ws", type=float, default=1e4, help="Weight for style loss (default: 10000).")
 parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
+arser.add_argument("--wsim", type=float, default=10, help="Weight for similarity loss (default: 10).")
+add_arguments(parser)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,10 +37,27 @@ def image_loader(image_name, h, w=None):
     image = Image.open(image_name)
     if w is not None: size = (h, w)
     else: size = h
+    size = (468, 700)
     image = t_func.resize(image, size)
     # fake batch dimension required to fit network's input dimensions
     image = t_func.to_tensor(image).unsqueeze(0)
     return image.to(device, torch.float)
+
+
+def load_masks():
+    if args.masks is None:
+        # create masks
+        from segment import segment
+        masks = segment(args)
+    else:
+        # load masks
+        masks = torch.load(args.masks)
+
+    style_mask = masks["tar"]
+    content_mask = masks["in"]
+    style_mask = style_mask.to(device).unsqueeze(1)
+    content_mask = content_mask.to(device).unsqueeze(1)
+    return style_mask, content_mask
 
 
 if __name__ == "__main__":
@@ -77,6 +100,8 @@ if __name__ == "__main__":
     # if you want to use white noise instead uncomment the below line:
     # input_img = torch.randn(content_img.data.size(), device=device)
 
+    style_mask, content_mask = load_masks()
+
     cnn = models.vgg19(pretrained=True).features.to(device).eval()
     cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
@@ -84,7 +109,7 @@ if __name__ == "__main__":
     print('Building the style transfer model..')
     model, style_losses, content_losses = get_style_model_and_losses(cnn,
         cnn_normalization_mean, cnn_normalization_std, style_img, content_img, device)
-    optimizer = optim.LBFGS([input_img.requires_grad_()])
+    optimizer = optim.LBFGS([input_img.requires_grad_()], lr=args.lr)
     regularizer = matting_regularizer.apply
 
     print('Optimizing..')
@@ -110,28 +135,32 @@ if __name__ == "__main__":
             model(input_img)
             style_score = 0
             content_score = 0
+            sim_score = 0
 
             for sl in style_losses:
                 style_score += sl.loss
             for cl in content_losses:
                 content_score += cl.loss
+            for siml in sim_losses:
+                sim_score += siml.loss
 
             style_score *= args.ws
             content_score *= args.wc
+            sim_score *= args.wsim
             regularize_score = args.wr * regularizer(laplacian_mat, input_img)
 
-            loss = style_score + content_score + regularize_score
+            loss = style_score + content_score + sim_score + regularize_score
             loss.backward()
 
             run[0] += 1
             if run[0] % 50 == 0:
                 print("run {}:".format(run))
-                print('Style Loss : {:4f} Content Loss: {:4f} Regularization: {:4f}'.format(
-                    style_score.item(), content_score.item(), regularize_score))
+                print('Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f} Regularization: {:4f}'.format(
+                    style_score.item(), content_score.item(), sim_score.item(), regularize_score))
                 print()
-                suffix_pos = args.output.rindex('.')
-                image_save_path = args.output[:suffix_pos] + "_it{}".format(run[0]) + args.output[suffix_pos:]
-                imsave(input_img, image_save_path)
+                #suffix_pos = args.output.rindex('.')
+                #image_save_path = args.output[:suffix_pos] + "_it{}".format(run[0]) + args.output[suffix_pos:]
+                #imsave(input_img, image_save_path)
 
             return loss
 

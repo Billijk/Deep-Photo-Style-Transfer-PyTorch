@@ -1,3 +1,8 @@
+.DS_Store
+*.png
+**.pth
+examples
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -14,7 +19,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -103,6 +107,3 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# data
-examples/
-**.png
