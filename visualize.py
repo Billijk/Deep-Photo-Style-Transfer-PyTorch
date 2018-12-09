@@ -1,10 +1,11 @@
 import torch
 import os
+import sys
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-masks = torch.load("masks.pth")
+masks = torch.load(sys.argv[1])
 mask_tensors = [masks["tar"], masks["in"]]
 
 for mask, save_root in zip(mask_tensors, ["style/", "content/"]):
@@ -12,5 +13,5 @@ for mask, save_root in zip(mask_tensors, ["style/", "content/"]):
         os.makedirs(save_root)
     
     for tensor, idx in zip(mask, masks["categories"]):
-        path = os.path.join(save_root, "{}.png".format(idx + 1))    # convert 0-index to 1-index
+        path = os.path.join(save_root, "{}.png".format(idx))
         plt.imsave(path, tensor.numpy())
