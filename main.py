@@ -11,6 +11,7 @@ import torchvision.transforms.functional as t_func
 import torchvision.models as models
 import torch.optim as optim
 from model import get_style_model_and_losses, matting_regularizer
+from segment import add_arguments
 
 parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
@@ -26,7 +27,7 @@ parser.add_argument("--laplacian", type=str, default="", help="Load pre-calculat
 parser.add_argument("--wr", type=float, default=1e4, help="Weight for photorealism regularization (default: 10000).")
 parser.add_argument("--ws", type=float, default=1e4, help="Weight for style loss (default: 10000).")
 parser.add_argument("--wc", type=float, default=1, help="Weight for content loss (default: 1).")
-arser.add_argument("--wsim", type=float, default=10, help="Weight for similarity loss (default: 10).")
+parser.add_argument("--wsim", type=float, default=10, help="Weight for similarity loss (default: 10).")
 add_arguments(parser)
 args = parser.parse_args()
 
@@ -88,7 +89,7 @@ if __name__ == "__main__":
         laplacian_i = torch.stack([laplacian_ix, laplacian_iy], dim=0)
         laplacian_mat = torch.sparse_coo_tensor(laplacian_i, laplacian_v, size=laplacian_size).to(device)
 
-        save_path = args.content + ".ml_{}.pth".format(s)
+        save_path = args.output + ".ml_{}.pth".format(s)
         torch.save((laplacian_i, laplacian_v), save_path)
         print("Values for matting laplacian saved at {}. Load this for the next time so you don't have to compute it again.".format(save_path))
 
@@ -107,8 +108,9 @@ if __name__ == "__main__":
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
     print('Building the style transfer model..')
-    model, style_losses, content_losses = get_style_model_and_losses(cnn,
-        cnn_normalization_mean, cnn_normalization_std, style_img, content_img, device)
+    model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
+        cnn_normalization_mean, cnn_normalization_std, style_img, content_img,
+        style_mask, content_mask, device)
     optimizer = optim.LBFGS([input_img.requires_grad_()], lr=args.lr)
     regularizer = matting_regularizer.apply
 
@@ -153,14 +155,13 @@ if __name__ == "__main__":
             loss.backward()
 
             run[0] += 1
-            if run[0] % 50 == 0:
+            if run[0] % 100 == 0:
                 print("run {}:".format(run))
                 print('Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f} Regularization: {:4f}'.format(
                     style_score.item(), content_score.item(), sim_score.item(), regularize_score))
-                print()
-                #suffix_pos = args.output.rindex('.')
-                #image_save_path = args.output[:suffix_pos] + "_it{}".format(run[0]) + args.output[suffix_pos:]
-                #imsave(input_img, image_save_path)
+                suffix_pos = args.output.rindex('.')
+                image_save_path = args.output[:suffix_pos] + "_it{}".format(run[0]) + args.output[suffix_pos:]
+                imsave(input_img, image_save_path)
 
             return loss
 

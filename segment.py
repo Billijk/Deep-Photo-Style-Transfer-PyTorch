@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
-from model import run_style_transfer
 
 # System libs
 import os
