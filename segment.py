@@ -53,34 +53,25 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         pred_tmp = net(feed_dict, segSize=segSize)
         pred = pred + pred_tmp.cpu() / len(args.imgSize)
 
+    # merge categories
+    for cat in category_merge_list:
+        cat = np.array(cat) - 1     # convert to 0-index
+        pred[cat[0]] = pred[cat].max(dim=0)[0]
+        pred[cat[1:]] = 0
+        
     if valid_masks is not None:
         mask = torch.zeros(1, args.num_class, segSize[0], segSize[1])
         mask[:, valid_masks, :, :] = 1
         pred *= mask
-        pred = pred / (pred.sum(dim=1) + 1e-6)
-
-    # cut off
-    pred[pred < cutoff] = 0
+    
+    _, preds = torch.max(pred, dim=1)
     return pred.detach().squeeze()
 
 def test(segmentation_module, data, args):
     tar_seg = segment_img(segmentation_module, data["tar"], args)
-    valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
+    valid_categories = np.unique(tar_seg.numpy())
     # input image can only be segmented with categories in target image
     in_seg = segment_img(segmentation_module, data["in"], args, valid_categories)
-
-    # merge categories
-    for cat in category_merge_list:
-        cat = np.array(cat) - 1     # convert to 0-index
-        tar_seg[cat[0]] = tar_seg[cat].sum(dim=0)
-        tar_seg[cat[1:]] = 0
-        in_seg[cat[0]] = in_seg[cat].sum(dim=0)
-        in_seg[cat[1:]] = 0
-    
-    # only keep valid category layers
-    valid_categories = np.unique(tar_seg.numpy().nonzero()[0])
-    in_seg = in_seg[valid_categories]
-    tar_seg = tar_seg[valid_categories]
     print("Categories: ", valid_categories + 1) # convert to 1-index for showing
 
     return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
