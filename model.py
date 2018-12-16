@@ -57,7 +57,6 @@ class StyleLoss(nn.Module):
         self.C = set()
         for elem in self.style_mask.view(-1):
             self.C.add(elem.item())
-        print(self.C)
 
     def forward(self, input):
         self.loss = 0
