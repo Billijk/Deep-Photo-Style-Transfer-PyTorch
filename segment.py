@@ -53,6 +53,7 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         pred_tmp = net(feed_dict, segSize=segSize)
         pred = pred + pred_tmp.cpu() / len(args.imgSize)
 
+    pred = pred.squeeze()
     # merge categories
     for cat in category_merge_list:
         cat = np.array(cat) - 1     # convert to 0-index
@@ -60,12 +61,12 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         pred[cat[1:]] = 0
         
     if valid_masks is not None:
-        mask = torch.zeros(1, args.num_class, segSize[0], segSize[1])
-        mask[:, valid_masks, :, :] = 1
+        mask = torch.zeros(args.num_class, segSize[0], segSize[1])
+        mask[valid_masks, :, :] = 1
         pred *= mask
     
-    _, preds = torch.max(pred, dim=1)
-    return pred.detach().squeeze()
+    _, preds = torch.max(pred, dim=0)
+    return preds.detach()
 
 def test(segmentation_module, data, args):
     tar_seg = segment_img(segmentation_module, data["tar"], args)
