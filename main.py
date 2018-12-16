@@ -57,8 +57,8 @@ def load_masks():
 
     style_mask = masks["tar"]
     content_mask = masks["in"]
-    style_mask = style_mask.to(device).unsqueeze(1)
-    content_mask = content_mask.to(device).unsqueeze(1)
+    style_mask = style_mask.to(device).unsqueeze(0).unsqueeze(0)
+    content_mask = content_mask.to(device).unsqueeze(0).unsqueeze(0)
     return style_mask, content_mask
 
 
