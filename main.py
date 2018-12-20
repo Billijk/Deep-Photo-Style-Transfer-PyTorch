@@ -9,7 +9,7 @@ import os
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
-from model import run_style_transfer
+from model import get_style_model_and_losses
 from segment import add_arguments
 
 
@@ -86,14 +86,54 @@ if __name__ == "__main__":
     cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
     cnn_normalization_std = torch.tensor([0.229, 0.224, 0.225]).to(device)
 
-    output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
-                                content_img, style_img, input_img, style_mask, content_mask, device,
-                                lr=args.lr, num_steps=args.iters,
-                                style_weight=args.ws, content_weight=args.wc, sim_weight=args.wsim)
-
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+
+    print('Building the style transfer model..')
+    model, style_losses, content_losses, sim_losses = get_style_model_and_losses(cnn,
+        cnn_normalization_mean, cnn_normalization_std, style_img, content_img,
+        style_mask, content_mask, device)
+    optimizer = optim.LBFGS([input_img.requires_grad_()], lr=args.lr)
+    regularizer = matting_regularizer.apply
+
+    print('Optimizing..')
+
+    run = [0]
+    while run[0] <= args.step:
+
+        def closure():
+
+            optimizer.zero_grad()
+            model(input_img)
+            style_score = 0
+            content_score = 0
+            sim_score = 0
+
+            for sl in style_losses:
+                style_score += sl.loss
+            for cl in content_losses:
+                content_score += cl.loss
+            for siml in sim_losses:
+                sim_score += siml.loss
+
+            style_score *= args.ws
+            content_score *= args.wc
+            sim_score *= args.wsim
+
+            loss = style_score + content_score + sim_score
+            loss.backward()
+
+            run[0] += 1
+            if run[0] % 100 == 0:
+                print('run {}: Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
+                    run, style_score.item(), content_score.item(), sim_score.item()))
+
+            return loss
+
+        optimizer.step(closure)
+        # correct the values of updated input image
+        input_img.data.clamp_(0, 1)
 
     def unload(tensor):
         # Convert an image from tensor to PIL image
