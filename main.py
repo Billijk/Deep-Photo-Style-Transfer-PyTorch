@@ -7,8 +7,10 @@ import numpy as np
 import os
 
 import torch
-import torchvision.transforms as transforms
+import torchvision.transforms.functional as t_func
 import torchvision.models as models
+import torch.optim as optim
+
 from model import get_style_model_and_losses
 from segment import add_arguments
 
@@ -95,12 +97,11 @@ if __name__ == "__main__":
         cnn_normalization_mean, cnn_normalization_std, style_img, content_img,
         style_mask, content_mask, device)
     optimizer = optim.LBFGS([input_img.requires_grad_()], lr=args.lr)
-    regularizer = matting_regularizer.apply
 
     print('Optimizing..')
 
     run = [0]
-    while run[0] <= args.step:
+    while run[0] <= args.iters:
 
         def closure():
 
@@ -125,7 +126,7 @@ if __name__ == "__main__":
             loss.backward()
 
             run[0] += 1
-            if run[0] % 100 == 0:
+            if run[0] % 50 == 0:
                 print('run {}: Style Loss : {:4f} Content Loss: {:4f} Similarity Loss: {:4f}'.format(
                     run, style_score.item(), content_score.item(), sim_score.item()))
 
@@ -139,10 +140,10 @@ if __name__ == "__main__":
         # Convert an image from tensor to PIL image
         image = tensor.cpu().clone()
         image = image.squeeze(0)
-        image_pil = transforms.functional.to_pil_image(image)
+        image_pil = t_func.to_pil_image(image)
         return image_pil
 
-    output = unload(output)
+    output = unload(input_img)
     save_path = args.output
     plt.imsave(save_path, output)
     print("Save image to {}".format(save_path))

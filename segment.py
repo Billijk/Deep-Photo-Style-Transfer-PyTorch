@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms as transforms
 import torchvision.models as models
-from model import run_style_transfer
 
 # System libs
 import os
@@ -39,7 +38,6 @@ def segment_img(net, data, seg_size, args, valid_masks=None, cutoff=0.2):
     """
     return Tensor (Categories, H, W)
     """
-    seg_size = (468, 700) # TODO: change this using input arguments
     img_resized_list = data['img_data']
     pred = torch.zeros(1, args.num_class, seg_size[0], seg_size[1])
     for img in img_resized_list:
