@@ -20,6 +20,7 @@ parser.add_argument("output", type=str, help="Path of output image.")
 parser.add_argument("--masks", type=str, help="Path of masks to load.")
 parser.add_argument("--lr", type=float, default=1.0, help="Initial learning rate.")
 parser.add_argument("--iters", type=int, default=300, help="Number of iterations to run.")
+parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
 parser.add_argument("--post_s", type=float, default=60.0, help="sigma_s for post processing recursive filter. (default: 60)")
 parser.add_argument("--post_r", type=float, default=1.0, help="sigma_r for post processing recursive filter. (default: 1)")
 parser.add_argument("--post_it", type=int, default=3, help="Number of iterations for post processing recursive filter. (default: 3)")
@@ -31,30 +32,33 @@ args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# desired size of the output image
-imsize = 512 if torch.cuda.is_available() else 128  # use small size if no gpu
-
-loader = transforms.Compose([
-    transforms.Resize((468,700)),  # scale imported image
-    transforms.ToTensor()])  # transform it into a torch tensor
-
-
-def image_loader(image_name):
+def image_loader(image_name, h, w=None):
     image = Image.open(image_name)
+    if w is not None: size = (h, w)
+    else: size = h
+    image = t_func.resize(image, size)
     # fake batch dimension required to fit network's input dimensions
-    image = loader(image).unsqueeze(0)
+    image = t_func.to_tensor(image).unsqueeze(0)
     return image.to(device, torch.float)
 
 
-def load_masks():
-    if args.masks is None:
-        # create masks
-        from segment import segment
-        masks = segment(args)
-    else:
+def load_masks(h, w):
+    masks = None
+    if args.masks is not None:
         # load masks
         masks = torch.load(args.masks)
-
+        if style_mask.shape[1] != h or style_mask.shape[2] != w:
+            print("Style mask shape is not compatible with desired image size ({}, {})".format(h, w))
+            masks = None
+        if content_mask.shape[1] != h or content_mask.shape[2] != w:
+            print("Content mask shape is not compatible with desired image size ({}, {})".format(h, w))
+            masks = None
+    
+    if masks is None:
+        # create masks
+        from segment import segment
+        masks = segment(args, h, w)
+    
     style_mask = masks["tar"]
     content_mask = masks["in"]
     style_mask = style_mask.to(device).unsqueeze(1)
@@ -64,8 +68,8 @@ def load_masks():
 
 if __name__ == "__main__":
 
-    style_img = image_loader(args.style)
-    content_img = image_loader(args.content)
+    style_img = image_loader(args.style, args.size)
+    content_img = image_loader(args.content, style_img.size(2), style_img.size(3))
 
     print(style_img.size())
     print(content_img.size())
@@ -76,7 +80,7 @@ if __name__ == "__main__":
     # if you want to use white noise instead uncomment the below line:
     # input_img = torch.randn(content_img.data.size(), device=device)
 
-    style_mask, content_mask = load_masks()
+    style_mask, content_mask = load_masks(style_img.size(2), style_img.size(3))
 
     cnn = models.vgg19(pretrained=True).features.to(device).eval()
     cnn_normalization_mean = torch.tensor([0.485, 0.456, 0.406]).to(device)
