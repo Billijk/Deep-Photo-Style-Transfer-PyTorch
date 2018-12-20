@@ -35,13 +35,13 @@ category_merge_list = [
     [21, 81, 84, 103]                               # Vehicle class: ’car’, ’bus’, ’truck’, ’van’
 ]
 
-def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
+def segment_img(net, data, seg_size, args, valid_masks=None, cutoff=0.2):
     """
     return Tensor (Categories, H, W)
     """
-    segSize = (468, 700) # TODO: change this using input arguments
+    seg_size = (468, 700) # TODO: change this using input arguments
     img_resized_list = data['img_data']
-    pred = torch.zeros(1, args.num_class, segSize[0], segSize[1])
+    pred = torch.zeros(1, args.num_class, seg_size[0], seg_size[1])
     for img in img_resized_list:
         feed_dict = data.copy()
         feed_dict['img_data'] = img
@@ -50,7 +50,7 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         feed_dict = async_copy_to(feed_dict, 0)
 
         # forward pass
-        pred_tmp = net(feed_dict, segSize=segSize)
+        pred_tmp = net(feed_dict, segSize=seg_size)
         pred = pred + pred_tmp.cpu() / len(args.imgSize)
 
     pred = pred.squeeze()
@@ -61,18 +61,18 @@ def segment_img(net, data, args, valid_masks=None, cutoff=0.2):
         pred[cat[1:]] = 0
         
     if valid_masks is not None:
-        mask = torch.zeros(args.num_class, segSize[0], segSize[1])
+        mask = torch.zeros(args.num_class, seg_size[0], seg_size[1])
         mask[valid_masks, :, :] = 1
         pred *= mask
     
     _, preds = torch.max(pred, dim=0)
     return preds.detach()
 
-def test(segmentation_module, data, args):
-    tar_seg = segment_img(segmentation_module, data["tar"], args)
+def test(segmentation_module, data, seg_size, args):
+    tar_seg = segment_img(segmentation_module, data["tar"], seg_size, args)
     valid_categories = np.unique(tar_seg.numpy())
     # input image can only be segmented with categories in target image
-    in_seg = segment_img(segmentation_module, data["in"], args, valid_categories)
+    in_seg = segment_img(segmentation_module, data["in"], seg_size, args, valid_categories)
     print("Categories: ", valid_categories + 1) # convert to 1-index for showing
 
     return {"in": in_seg, "tar": tar_seg, "categories": valid_categories}
@@ -82,7 +82,7 @@ def load_data(data_dict, args):
     dset = TestDataset(data_list, args)
     return {"in": dset[0], "tar": dset[1]}
 
-def segment(args):
+def segment(args, h, w):
     # absolute paths of model weights
     weights_encoder = os.path.join(args.model_path,
                                         'encoder' + args.suffix)
@@ -116,7 +116,7 @@ def segment(args):
 
     # Main loop
     with torch.no_grad():
-        res = test(segmentation_module, data, args)
+        res = test(segmentation_module, data, (h, w), args)
     print('Inference done!')
     return res
     
@@ -168,6 +168,7 @@ if __name__ == '__main__':
     parser.add_argument('--content', required=True)
     parser.add_argument('--style', required=True)
     parser.add_argument('--save_path', required=True)
+    parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
     add_arguments(parser)
     args = parser.parse_args()
     print(args)
