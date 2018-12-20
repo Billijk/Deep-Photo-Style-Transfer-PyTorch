@@ -38,7 +38,6 @@ def image_loader(image_name, h, w=None):
     image = Image.open(image_name)
     if w is not None: size = (h, w)
     else: size = h
-    size = (468, 700)
     image = t_func.resize(image, size)
     # fake batch dimension required to fit network's input dimensions
     image = t_func.to_tensor(image).unsqueeze(0)
