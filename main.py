@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("content", type=str, help="Path of content image.")
 parser.add_argument("style", type=str, help="Path of style image.")
 parser.add_argument("output", type=str, help="Path of output image.")
-parser.add_argument("--step", type=int, default=300, help="Number of steps to optimize.")
+parser.add_argument("--iters", type=int, default=300, help="Number of steps to optimize.")
 parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
 parser.add_argument("--masks", type=str, help="Path of masks to load.")
 parser.add_argument("--lr", type=float, default=1.0, help="Initial learning rate.")
@@ -128,7 +128,7 @@ if __name__ == "__main__":
         plt.imsave(path, image)
 
     run = [0]
-    while run[0] <= args.step:
+    while run[0] <= args.iters:
 
         def closure():
 
