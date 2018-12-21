@@ -128,7 +128,7 @@ def segment(args, h, w):
     
 
 def main(args):
-    res = segment(args)
+    res = segment(args, args.height, args.width)
     torch.save(res, args.save_path)
 
 
@@ -174,7 +174,8 @@ if __name__ == '__main__':
     parser.add_argument('--content', required=True)
     parser.add_argument('--style', required=True)
     parser.add_argument('--save_path', required=True)
-    parser.add_argument("--size", type=int, default=480, help="Size for scaling image.")
+    parser.add_argument("--height", type=int, default=480, help="Size for scaling image.")
+    parser.add_argument("--width", type=int, default=720, help="Size for scaling image.")
     add_arguments(parser)
     args = parser.parse_args()
     print(args)
