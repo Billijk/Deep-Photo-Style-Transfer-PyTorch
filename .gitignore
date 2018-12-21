@@ -1,6 +1,6 @@
 .DS_Store
 *.png
-**.pth
+*.pth
 examples
 
 # Byte-compiled / optimized / DLL files
